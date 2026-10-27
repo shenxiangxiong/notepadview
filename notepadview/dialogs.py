@@ -1,0 +1,71 @@
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtWidgets import (QDialog, QDialogButtonBox, QHBoxLayout, QLabel,
+                               QListWidget, QListWidgetItem, QStyle, QVBoxLayout, QWidget)
+
+
+class NewDocumentDialog(QDialog):
+    from notepadview.text_types import TEXT_TYPES
+    FORMATS = (('untyped', '未指定类型'),) + tuple(
+        (key, item.label + ' 文档')
+        for key, item in TEXT_TYPES.items() if key not in ('csv', 'tsv')
+    )
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName('newDocumentDialog')
+        self.setWindowTitle('新建文档')
+        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.setMinimumWidth(440)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 22, 24, 20)
+        layout.setSpacing(14)
+        title = QLabel('新建文档')
+        title.setObjectName('dialogTitle')
+        layout.addWidget(title)
+        label = QLabel('文档类型')
+        label.setObjectName('dialogLabel')
+        layout.addWidget(label)
+        self.type_list = QListWidget()
+        self.type_list.setObjectName('documentTypeList')
+        self.type_list.setAccessibleName('文档类型')
+        self.type_list.setSpacing(3)
+        self.type_list.setFixedHeight(298)
+        self.type_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        for language, name in self.FORMATS:
+            item = QListWidgetItem()
+            suffix = self.TEXT_TYPES[language].suffixes[0] if language in self.TEXT_TYPES else language if language in ('docx', 'xlsx') else ''
+            item.setData(Qt.AccessibleTextRole, name + '  .' + suffix)
+            item.setData(Qt.UserRole, language)
+            item.setSizeHint(QSize(0, 50))
+            self.type_list.addItem(item)
+            row = QWidget()
+            row.setObjectName('documentTypeRow')
+            row.setAttribute(Qt.WA_TransparentForMouseEvents)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(14, 0, 14, 0)
+            icon = QLabel()
+            icon.setPixmap(self.style().standardIcon(QStyle.SP_FileIcon).pixmap(22, 22))
+            row_layout.addWidget(icon)
+            row_layout.addSpacing(6)
+            row_layout.addWidget(QLabel(name), 1)
+            extension = QLabel('.' + suffix if suffix else '保存时选择')
+            extension.setObjectName('fileExtension')
+            row_layout.addWidget(extension)
+            self.type_list.setItemWidget(item, row)
+        layout.addWidget(self.type_list)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.create_button = buttons.button(QDialogButtonBox.Ok)
+        self.create_button.setText('新建')
+        self.create_button.setObjectName('primaryButton')
+        self.create_button.setDefault(True)
+        self.cancel_button = buttons.button(QDialogButtonBox.Cancel)
+        self.cancel_button.setText('取消')
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.type_list.itemActivated.connect(lambda _item: self.accept())
+        self.type_list.setCurrentRow(0)
+        self.type_list.setFocus()
+
+    def selected_format(self):
+        return self.type_list.currentItem().data(Qt.UserRole)

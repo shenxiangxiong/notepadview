@@ -1,0 +1,34 @@
+.venv/
+__pycache__/
+.pytest_cache/
+build/
+dist/
+tools/
+*.spec
+test-*/
+screenshots/*.ini
+inno-bootstrap.exe
+
+# Local previews, validation runs, and generated deliverables
+.*-2026*/
+.compat-scintilla/
+.diagram-preview/
+.preview-*/
+.preview-*.py
+.preview-*.ini*
+.superpowers/
+.test-*/
+logo/
+plan/
+需求/
+宣传视频/
+screenshots/
+Windows打包.exe
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx

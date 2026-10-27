@@ -1,0 +1,34 @@
+openapi: 3.0.3
+info:
+  title: Orders API
+  version: '2.0'
+servers:
+  - url: https://{environment}.api.example.test/v2
+    variables:
+      environment:
+        default: staging
+paths:
+  /orders:
+    get:
+      summary: List orders
+      parameters:
+        - name: state
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [Orders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK

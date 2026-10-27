@@ -1,0 +1,20 @@
+{
+  "swagger": "2.0",
+  "info": {"title": "Users API", "version": "1.0"},
+  "host": "api.example.test",
+  "basePath": "/v1",
+  "schemes": ["https"],
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "listUsers",
+        "summary": "List users",
+        "tags": ["Users"],
+        "parameters": [
+          {"name": "limit", "in": "query", "type": "integer"}
+        ],
+        "responses": {"200": {"description": "OK"}}
+      }
+    }
+  }
+}

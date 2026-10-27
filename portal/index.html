@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#003080">
+  <meta name="description" content="Notepad View 是一款面向多种文件的桌面阅读与编辑工作台。写 Markdown、看代码、浏览文档，让常用文件在一个清爽工作区里各得其所。">
+  <title>Notepad View — 给文件一个更好的阅读席位</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+  <header class="site-header" id="top">
+    <a class="brand" href="#top" aria-label="Notepad View 首页">
+      <img class="brand-logo" src="assets/nvlogo.png" alt="Notepad View 标志">
+      <span class="brand-name">notepad<span>view</span></span>
+      <span class="brand-divider" aria-hidden="true"></span>
+      <span class="brand-note">给文件一个好位置</span>
+    </a>
+    <button class="menu-toggle" type="button" aria-controls="primary-navigation"
+            aria-expanded="false" hidden>
+      <span class="menu-toggle-label">菜单</span>
+      <span class="menu-toggle-icon" aria-hidden="true"><i></i><i></i></span>
+    </button>
+    <nav class="primary-nav" id="primary-navigation" aria-label="主要导航">
+      <a href="#formats">格式一览</a>
+      <a href="#editing">编辑体验</a>
+      <a href="#reading">专注阅读</a>
+      <a href="#workflow">工作方式</a>
+      <a class="nav-cta" href="#features">浏览功能亮点 <span aria-hidden="true">↘</span></a>
+    </nav>
+  </header>
+
+  <main id="main-content">
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="eyebrow-dot"></span> 一个工作台 · 多种文件 · 各得其所</p>
+        <h1 id="hero-title">打开文件，<br><em>就进入状态。</em></h1>
+        <p class="hero-intro">写 Markdown、读代码、查看文档与电子书。Notepad View 把常用文件放进同一个清爽工作区，让内容先被看见，让思路不被工具打断。</p>
+        <div class="hero-actions">
+          <a class="button button-primary" href="#features">浏览功能亮点 <span aria-hidden="true">↘</span></a>
+          <a class="text-link" href="#formats">看看支持哪些文件 <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="hero-footnote">
+          <span class="footnote-mark" aria-hidden="true">✳</span>
+          <span>桌面工作流 · 本地文件 · 为阅读与编辑而设计</span>
+        </div>
+      </div>
+
+      <div class="hero-art" aria-label="Notepad View 工作区示意图：左侧是分类文件列表，中间编辑 Markdown，右侧即时预览。">
+        <div class="art-orbit orbit-one" aria-hidden="true"></div>
+        <div class="art-orbit orbit-two" aria-hidden="true"></div>
+        <div class="art-caption"><span>工作区示意</span><span>01 / 07</span></div>
+        <div class="app-window">
+          <div class="app-titlebar">
+            <div class="window-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span class="app-title">Notepad View <span>—</span> 项目备忘.md</span>
+            <span class="app-title-icon" aria-hidden="true">⋯</span>
+          </div>
+          <div class="app-toolbar">
+            <span class="toolbar-brand"><b>NV</b> Notepad View</span>
+            <span class="toolbar-menu">文件　编辑　视图　设置</span>
+            <span class="toolbar-actions"><i></i><i></i><i></i></span>
+          </div>
+          <div class="app-body">
+            <aside class="app-sidebar" aria-hidden="true">
+              <div class="sidebar-heading">我的文件 <span>＋</span></div>
+              <div class="sidebar-group">⌄　工作笔记</div>
+              <div class="sidebar-file selected"><span class="file-glyph glyph-md">M</span> 项目备忘.md</div>
+              <div class="sidebar-file"><span class="file-glyph glyph-py">Py</span> 数据整理.py</div>
+              <div class="sidebar-file"><span class="file-glyph glyph-json">{ }</span> settings.json</div>
+              <div class="sidebar-group lower-group">⌄　待读资料</div>
+              <div class="sidebar-file"><span class="file-glyph glyph-epub">▤</span> 一本好书.epub</div>
+              <div class="sidebar-file"><span class="file-glyph glyph-pdf">▧</span> 研究报告.pdf</div>
+              <div class="sidebar-status"><span></span> 工作区已保存</div>
+            </aside>
+            <div class="app-editor" aria-hidden="true">
+              <div class="tab-strip"><span class="active-tab"><i></i>项目备忘.md</span><span>数据整理.py</span><b>＋</b></div>
+              <div class="editor-content">
+                <div class="line-numbers">1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11</div>
+                <div class="code-lines">
+                  <div><span class="syntax-hash">#</span> <span class="syntax-heading">灵感整理</span></div>
+                  <div>&nbsp;</div>
+                  <div><span class="syntax-hash">##</span> <span class="syntax-heading">今天要做的事</span></div>
+                  <div>&nbsp;</div>
+                  <div><span class="syntax-mark">- [x]</span> 收集参考资料</div>
+                  <div><span class="syntax-mark">- [ ]</span> 整理阅读笔记</div>
+                  <div><span class="syntax-mark">- [ ]</span> 分享给团队</div>
+                  <div>&nbsp;</div>
+                  <div><span class="syntax-hash">##</span> <span class="syntax-heading">一句话记住</span></div>
+                  <div>&nbsp;</div>
+                  <div><span class="syntax-quote">&gt;</span> 好的工具，让注意力回到内容。</div>
+                </div>
+              </div>
+              <div class="editor-status"><span>Markdown</span><span>UTF-8　行 11，列 1</span></div>
+            </div>
+            <div class="app-preview" aria-hidden="true">
+              <div class="preview-heading">预览 <span>◉</span></div>
+              <div class="preview-page">
+                <span class="preview-kicker">NOTES · 01</span>
+                <h2>灵感整理</h2>
+                <div class="preview-rule"></div>
+                <h3>今天要做的事</h3>
+                <p class="preview-check"><b>✓</b> 收集参考资料</p>
+                <p class="preview-check"><b></b> 整理阅读笔记</p>
+                <p class="preview-check"><b></b> 分享给团队</p>
+                <h3 class="preview-later">一句话记住</h3>
+                <blockquote>好的工具，让注意力回到内容。</blockquote>
+              </div>
+            </div>
+          </div>
+          <div class="app-bottom"><span><i></i> 就绪</span><span>源码　◫　预览</span></div>
+        </div>
+        <div class="floating-note note-one"><span>双栏实时预览</span><b aria-hidden="true">↗</b></div>
+        <div class="floating-note note-two"><b aria-hidden="true">✳</b><span>内容优先，工具靠后</span></div>
+      </div>
+      <div class="hero-index" aria-hidden="true"><span>SCROLL TO EXPLORE</span><i></i><span>01 — 04</span></div>
+    </section>
+
+    <section class="feature-intro section-wrap" id="features" aria-labelledby="features-title">
+      <div class="section-kicker"><span>01</span><span>为什么是 Notepad View</span></div>
+      <div class="feature-intro-grid">
+        <h2 id="features-title">不只是打开文件。<br><em>是把工作接着做下去。</em></h2>
+        <p>格式不同，不必意味着工具四散。编辑、预览、查阅与整理，在一个熟悉的桌面工作区里自然衔接。你可以更快找到内容，也更容易回到上一次停下的地方。</p>
+      </div>
+      <div class="feature-trio">
+        <article class="feature-tile">
+          <span class="tile-number">A / 01</span>
+          <span class="tile-icon icon-stack" aria-hidden="true"><i></i><i></i><i></i></span>
+          <h3>多种格式，一个入口</h3>
+          <p>文本、代码、PDF、图片、Office 与电子书，各自用合适的方式阅读或编辑。</p>
+          <a href="#formats" aria-label="查看支持格式">查看格式 <span aria-hidden="true">↗</span></a>
+        </article>
+        <article class="feature-tile tile-accent">
+          <span class="tile-number">B / 02</span>
+          <span class="tile-icon icon-split" aria-hidden="true"><i></i><i></i><b></b></span>
+          <h3>边写边看，思路不断</h3>
+          <p>Markdown 源码与排版预览并排显示，修改即刻呈现，少一次切换，多一点专注。</p>
+          <a href="#editing" aria-label="了解编辑体验">了解编辑 <span aria-hidden="true">↗</span></a>
+        </article>
+        <article class="feature-tile">
+          <span class="tile-number">C / 03</span>
+          <span class="tile-icon icon-book" aria-hidden="true"><i></i><i></i><b></b></span>
+          <h3>读完之后，接着工作</h3>
+          <p>多文档页签、文件分类与工作区恢复，帮你保留上下文，不必每次从头找起。</p>
+          <a href="#workflow" aria-label="了解工作方式">了解工作方式 <span aria-hidden="true">↗</span></a>
+        </article>
+      </div>
+    </section>
+
+    <section class="formats-section section-wrap" id="formats" aria-labelledby="formats-title">
+      <div class="section-kicker"><span>02</span><span>文件格式地图</span></div>
+      <div class="section-heading-row">
+        <h2 id="formats-title">文件有很多种，<br><em>打开方式也可以很简单。</em></h2>
+        <p>按内容选择合适的体验：需要编辑的进入编辑区，适合查看的使用只读预览。</p>
+      </div>
+      <div class="format-grid">
+        <article class="format-card format-card-wide">
+          <div class="format-card-top"><span class="format-icon icon-text" aria-hidden="true">T<span>.</span></span><span class="format-mode mode-edit">编辑与预览</span></div>
+          <h3>文本与代码</h3>
+          <p>从纯文本到常见开发文件，让内容清晰可读，编辑不被格式干扰。</p>
+          <div class="format-chips"><span>MD</span><span>TXT</span><span>JSON</span><span>YAML</span><span>XML</span><span>HTML</span><span>CSS</span><span>JS / TS</span><span>PY</span><span>SQL</span><span>CSV</span><span>…</span></div>
+        </article>
+        <article class="format-card">
+          <div class="format-card-top"><span class="format-icon icon-office" aria-hidden="true">▤</span><span class="format-mode mode-read">只读查看</span></div>
+          <h3>Office 与文档</h3>
+          <p>查看 DOCX、XLSX；其他 Office 格式可走只读转换阅读路径。</p>
+          <div class="format-chips"><span>DOCX</span><span>XLSX</span><span>DOC</span><span>PPT</span><span>ODT</span><span>RTF</span></div>
+        </article>
+        <article class="format-card">
+          <div class="format-card-top"><span class="format-icon icon-pdf" aria-hidden="true">▧</span><span class="format-mode mode-read">只读查看</span></div>
+          <h3>PDF 与图片</h3>
+          <p>快速浏览页面、图像与图表；需要时放大查看，不改动原文件。</p>
+          <div class="format-chips"><span>PDF</span><span>PNG</span><span>JPG</span><span>SVG</span><span>流程图</span></div>
+        </article>
+        <article class="format-card format-card-wide format-card-book">
+          <div class="format-card-top"><span class="format-icon icon-ebook" aria-hidden="true">▥</span><span class="format-mode mode-read">章节阅读</span></div>
+          <h3>电子书</h3>
+          <p>EPUB 按章节与目录阅读；MOBI、AZW3、FB2 可在配置阅读引擎的版本中转换后阅读。</p>
+          <div class="format-chips"><span>EPUB</span><span>MOBI</span><span>AZW3</span><span>FB2</span></div>
+          <span class="book-decoration" aria-hidden="true">读<br>一<br>章</span>
+        </article>
+      </div>
+      <p class="format-footnote"><span aria-hidden="true">↳</span> 格式支持会因应用版本与运行时配置而异；查看器与编辑器的能力并不相同。</p>
+    </section>
+
+    <section class="editing-section" id="editing" aria-labelledby="editing-title">
+      <div class="editing-inner section-wrap">
+        <div class="section-kicker kicker-light"><span>03</span><span>写作与代码</span></div>
+        <div class="editing-grid">
+          <div class="editing-copy">
+            <p class="mini-label">WRITE / PREVIEW / REPEAT</p>
+            <h2 id="editing-title">写的时候，<br><em>已经看见成稿。</em></h2>
+            <p>Markdown 源码和预览并肩而坐。标题、列表、表格、引用、代码、链接与图片，一边编辑，一边看到它们成为清晰的文档。</p>
+            <ul class="check-list">
+              <li><span>01</span> 双栏实时预览，修改马上可见</li>
+              <li><span>02</span> 多种语言语法高亮，结构更清楚</li>
+              <li><span>03</span> 按后缀与内容识别文本类型</li>
+              <li><span>04</span> 编码读取与转换，减少乱码困扰</li>
+              <li><span>05</span> 查找替换、格式化与大纲导航</li>
+            </ul>
+            <a class="light-link" href="#workflow">看看它如何融入工作流 <span aria-hidden="true">→</span></a>
+          </div>
+          <div class="editor-showcase" aria-label="Markdown 编辑和预览的示意图">
+            <div class="showcase-top"><span><i></i> 写作空间</span><span>源码 <b>·</b> 预览</span></div>
+            <div class="showcase-columns">
+              <div class="mini-editor" aria-hidden="true">
+                <span class="mini-line">01 <b>#</b> 读书札记</span>
+                <span class="mini-line">02</span>
+                <span class="mini-line">03 <b>##</b> 留下重要的</span>
+                <span class="mini-line">04</span>
+                <span class="mini-line">05 - 一个好问题</span>
+                <span class="mini-line">06 - 一段新想法</span>
+                <span class="mini-line">07</span>
+                <span class="mini-line">08 &gt; 读，是为了看见。</span>
+                <span class="mini-line mini-cursor">09 <i></i></span>
+              </div>
+              <div class="mini-preview" aria-hidden="true">
+                <span class="paper-label">READING NOTES · 06</span>
+                <h3>读书札记</h3>
+                <div></div>
+                <h4>留下重要的</h4>
+                <p>— 一个好问题</p>
+                <p>— 一段新想法</p>
+                <blockquote>读，是为了看见。</blockquote>
+              </div>
+            </div>
+            <div class="showcase-bottom"><span>◉ Markdown</span><span>UTF-8</span><span>行 9 · 列 1</span></div>
+            <span class="showcase-stamp" aria-hidden="true">LIVE<br>PREVIEW</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="reading-section section-wrap" id="reading" aria-labelledby="reading-title">
+      <div class="section-kicker"><span>04</span><span>阅读，也是一种工作流</span></div>
+      <div class="reading-heading">
+        <h2 id="reading-title">让文件好好呈现，<br><em>让原件保持原样。</em></h2>
+        <p>当格式适合编辑，就交给编辑器；当它更适合阅读，就用专属的只读预览。边界清楚，原文件也更安心。</p>
+      </div>
+      <div class="reading-panels">
+        <article class="reading-panel panel-paper">
+          <div class="panel-label"><span>VIEW / 01</span><span class="panel-symbol" aria-hidden="true">▧</span></div>
+          <h3>熟悉的文档，<br>舒服地查看。</h3>
+          <p>PDF 与图片可在应用内预览。DOCX、XLSX 提供只读查看能力，适合快速浏览正文、工作表与资料。</p>
+          <div class="page-stack" aria-hidden="true"><div class="page page-back"></div><div class="page page-mid"></div><div class="page page-front"><i></i><b></b><span></span><span></span><span></span><span></span></div><span class="page-tag">PDF</span></div>
+          <span class="panel-note">不在查看器里编辑原件</span>
+        </article>
+        <article class="reading-panel panel-ink">
+          <div class="panel-label"><span>READ / 02</span><span class="panel-symbol" aria-hidden="true">▥</span></div>
+          <h3>从目录出发，<br>一章一章读下去。</h3>
+          <p>EPUB 提供章节与目录式阅读。其他电子书与更多 Office 格式，可通过对应转换引擎进入只读阅读流程。</p>
+          <div class="book-spread" aria-hidden="true"><div class="book-page book-left"><span>CHAPTER 04</span><i></i><i></i><i></i><i></i><b>04</b></div><div class="book-page book-right"><span>04 — A NEW PAGE</span><h4>慢一点，<br>看清正在读的。</h4><i></i><i></i><i></i><b>27</b></div></div>
+          <span class="panel-note">DRM 电子书不在支持范围</span>
+        </article>
+      </div>
+      <div class="runtime-note">
+        <span class="runtime-icon" aria-hidden="true">i</span>
+        <p><strong>关于格式与版本</strong>　部分旧版 Office、MOBI、AZW3、FB2 阅读需要 LibreOffice 或 Calibre 运行时。是否随发行包提供取决于具体构建；加密/DRM 文件不支持，复杂排版也可能与原软件略有差异。</p>
+        <a href="#limits" aria-label="查看支持边界">了解边界 <span aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+
+    <section class="workflow-section" id="workflow" aria-labelledby="workflow-title">
+      <div class="workflow-inner section-wrap">
+        <div class="section-kicker"><span>05</span><span>不丢上下文</span></div>
+        <div class="workflow-heading">
+          <h2 id="workflow-title">每次回来，<br><em>都能接着上次。</em></h2>
+          <p>文件会变多，思路不必重来。Notepad View 帮你把常用资料、正在编辑的内容和阅读位置安排得井井有条。</p>
+        </div>
+        <div class="workflow-steps">
+          <article><span class="step-count">01</span><div class="step-icon" aria-hidden="true">↧</div><h3>把文件带进来</h3><p>打开文件或拖放到工作区，文本、代码与可预览文件各自进入合适的视图。</p></article>
+          <article><span class="step-count">02</span><div class="step-icon" aria-hidden="true">▦</div><h3>按手头任务整理</h3><p>用多个页签和文件分类收纳资料，切换时仍保留各自的内容与状态。</p></article>
+          <article><span class="step-count">03</span><div class="step-icon" aria-hidden="true">↗</div><h3>下次接着做</h3><p>工作区记录文档、选区和视图等状态；电子书阅读位置也可随工作区恢复。</p></article>
+        </div>
+        <div class="workflow-ribbon"><span>OPEN</span><i></i><span>FOCUS</span><i></i><span>RETURN</span><b aria-hidden="true">✳</b></div>
+      </div>
+    </section>
+
+    <section class="closing-section section-wrap" aria-labelledby="closing-title">
+      <div class="closing-mark" aria-hidden="true">NV</div>
+      <p class="eyebrow"><span class="eyebrow-dot"></span> LESS SWITCHING. MORE READING.</p>
+      <h2 id="closing-title">让文件安静地打开。<br><em>让想法继续往前。</em></h2>
+      <a class="button button-primary" href="#features">浏览功能亮点 <span aria-hidden="true">↗</span></a>
+      <span class="closing-decoration" aria-hidden="true">01—05</span>
+    </section>
+
+    <section class="limits-section" id="limits" aria-labelledby="limits-title">
+      <div class="limits-inner section-wrap">
+        <div class="section-kicker"><span>06</span><span>清楚的边界，可靠的期待</span></div>
+        <div class="limits-copy">
+          <h2 id="limits-title">好用，也要说清楚。</h2>
+          <p>Notepad View 的目标是让常用文件更容易阅读与处理，不意味着所有格式都能编辑或完美还原。以下能力会因文件内容及构建版本而异。</p>
+        </div>
+        <div class="limit-items">
+          <p><span>01</span> 只读格式不能在应用内写回原文件。</p>
+          <p><span>02</span> 旧 Office 与部分电子书的阅读可能需要额外打包运行时。</p>
+          <p><span>03</span> 加密/DRM 电子书及复杂专有对象不保证可读。</p>
+          <p><span>04</span> 转换后的分页与排版可能和原始软件略有不同。</p>
+        </div>
+        <p class="version-note">门户为软件介绍页。此处未提供下载服务；请以实际发布版本和随附说明为准。</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <a class="footer-brand" href="#top"><img class="brand-logo" src="assets/nvlogo.png" alt="Notepad View 标志"><span>Notepad View</span></a>
+    <p>给文件一个好位置。<span>为阅读与编辑而设计。</span></p>
+    <a class="back-top" href="#top">回到顶部 <span aria-hidden="true">↑</span></a>
+    <span class="footer-rule" aria-hidden="true"></span>
+    <small>NOTEPAD VIEW <span>·</span> READ WELL. MAKE THINGS.</small>
+  </footer>
+</body>
+</html>
