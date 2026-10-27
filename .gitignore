@@ -32,3 +32,5 @@ Windows打包.exe
 *.pem
 *.key
 *.pfx
+/.idea/
+/docs
