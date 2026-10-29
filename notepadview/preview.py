@@ -1,7 +1,9 @@
 """Explicitly named preview actions independent of Chromium translations."""
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication
+
+from notepadview.theme import ThemedMenu as QMenu
 from PySide6.QtWebEngineCore import QWebEngineContextMenuRequest, QWebEnginePage
 from PySide6.QtWebEngineWidgets import QWebEngineView
 

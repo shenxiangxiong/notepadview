@@ -20,7 +20,9 @@ from PySide6.QtCore import Qt, Signal, QUrl
 from PySide6.QtGui import (QColor, QFont, QTextCharFormat, QTextCursor, QTextDocument,
                           QTextTable, QTextFormat, QUndoCommand, QUndoStack)
 from PySide6.QtWidgets import (QApplication, QLineEdit, QAbstractItemDelegate, QWidget, QVBoxLayout, QToolBar, QTextEdit, QTableWidget,
-    QTableWidgetItem, QComboBox, QInputDialog, QColorDialog, QFontComboBox, QSpinBox)
+    QTableWidgetItem, QInputDialog, QColorDialog, QSpinBox)
+
+from notepadview.theme import ThemedComboBox as QComboBox, ThemedFontComboBox as QFontComboBox
 
 _MAX_PACKAGE = 64 * 1024 * 1024
 _MAX_EXPANDED = 128 * 1024 * 1024

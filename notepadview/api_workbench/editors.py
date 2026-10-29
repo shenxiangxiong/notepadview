@@ -4,9 +4,11 @@ import json
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QComboBox, QLineEdit, QPlainTextEdit, QStackedWidget,
+    QPushButton, QLineEdit, QPlainTextEdit, QStackedWidget,
     QLabel, QFileDialog, QFormLayout, QHeaderView, QAbstractItemView, QTabBar,
 )
+
+from notepadview.theme import ThemedComboBox as QComboBox
 
 
 class PairEditor(QWidget):

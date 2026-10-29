@@ -2,7 +2,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QPoint, QRectF, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPalette, QPixmap, QRegion
-from PySide6.QtWidgets import QApplication, QComboBox, QMenu, QStyle, QWidget
+from PySide6.QtWidgets import QApplication, QComboBox, QFontComboBox, QMenu, QMenuBar, QStyle, QWidget
 
 from notepadview.palettes import THEMES, theme_colors
 from notepadview.control_icons import control_icon
@@ -74,6 +74,53 @@ class PopupThemeFilter(QObject):
                     break
                 owner = owner.parent()
         return False
+
+
+def _watch_popup(popup):
+    app = QApplication.instance()
+    if not hasattr(app, '_notepad_popup_filter'):
+        app._notepad_popup_filter = PopupThemeFilter(app)
+    popup.installEventFilter(app._notepad_popup_filter)
+
+
+class ThemedMenu(QMenu):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        _watch_popup(self)
+
+    def addMenu(self, *args):
+        if len(args) == 1 and isinstance(args[0], QMenu):
+            _watch_popup(args[0])
+            return super().addMenu(*args)
+        menu = ThemedMenu(args[-1], self)
+        if len(args) == 2:
+            menu.setIcon(args[0])
+        super().addMenu(menu)
+        return menu
+
+
+class ThemedMenuBar(QMenuBar):
+    def addMenu(self, *args):
+        if len(args) == 1 and isinstance(args[0], QMenu):
+            _watch_popup(args[0])
+            return super().addMenu(*args)
+        menu = ThemedMenu(args[-1], self)
+        if len(args) == 2:
+            menu.setIcon(args[0])
+        super().addMenu(menu)
+        return menu
+
+
+class ThemedComboBox(QComboBox):
+    def showPopup(self):
+        _watch_popup(self.view().window())
+        super().showPopup()
+
+
+class ThemedFontComboBox(QFontComboBox):
+    def showPopup(self):
+        _watch_popup(self.view().window())
+        super().showPopup()
 
 
 def theme_stylesheet(theme):
@@ -254,7 +301,6 @@ def apply_theme(window):
     app = QApplication.instance()
     if not hasattr(app, '_notepad_popup_filter'):
         app._notepad_popup_filter = PopupThemeFilter(app)
-        app.installEventFilter(app._notepad_popup_filter)
     colors = theme_colors(window.theme)
     palette = QPalette(window.palette())
     for role, key in ((QPalette.Window, 'bg'), (QPalette.Base, 'bg'), (QPalette.Button, 'pane'),

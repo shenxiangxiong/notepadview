@@ -8,7 +8,9 @@ from threading import Event, Thread
 
 from PySide6.QtCore import Signal, QTimer, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QDialog, QMenu, QMessageBox, QWidget
+from PySide6.QtWidgets import QDialog, QMessageBox, QWidget
+
+from notepadview.theme import ThemedMenu as QMenu
 from pyside6_scintilla import Scintilla, ScintillaDocument, ScintillaEdit
 from pygments.lexers import get_lexer_by_name
 from pygments.token import Token

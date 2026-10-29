@@ -10,10 +10,11 @@ from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QRectF, QSaveFile, Qt
 from PySide6.QtGui import (QColor, QFont, QFontMetrics, QImage, QImageReader, QPainter, QPen,
                           QTextCharFormat, QTextCursor, QTransform, QUndoCommand, QUndoStack)
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import (QCheckBox, QColorDialog, QDoubleSpinBox, QFontComboBox,
-    QGraphicsItem, QGraphicsScene,
+from PySide6.QtWidgets import (QCheckBox, QColorDialog, QDoubleSpinBox, QGraphicsItem, QGraphicsScene,
     QGraphicsTextItem, QGraphicsView, QHBoxLayout, QInputDialog, QLabel,
     QMessageBox, QPushButton, QSpinBox, QStyledItemDelegate, QVBoxLayout, QWidget)
+
+from notepadview.theme import ThemedFontComboBox as QFontComboBox
 
 
 def safe_svg(data):

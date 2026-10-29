@@ -7,9 +7,11 @@ from PySide6.QtCore import QPointF, QRectF, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import (QBrush, QColor, QImage, QPainter, QPainterPath, QPen,
                           QPolygonF, QUndoCommand, QUndoStack)
 from PySide6.QtSvg import QSvgGenerator
-from PySide6.QtWidgets import (QComboBox, QFileDialog, QGraphicsItem, QGraphicsPathItem,
+from PySide6.QtWidgets import (QFileDialog, QGraphicsItem, QGraphicsPathItem,
     QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsView, QHBoxLayout, QInputDialog,
     QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget)
+
+from notepadview.theme import ThemedComboBox as QComboBox
 
 from notepadview.diagram_formats import (SUFFIXES, identifier, new_diagram, read_diagram,
                                         validate, write_diagram)

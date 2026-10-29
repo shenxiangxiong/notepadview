@@ -28,7 +28,7 @@ from notepadview.ebook_reader import (EBOOK_CONVERT_SUFFIXES, convert_ebook_to_e
 from notepadview.reader_conversion import ReaderConversionService
 from notepadview.reader_jobs import ReaderJob
 from notepadview.reader_runtime import reader_runtime_root
-from notepadview.rendering import (MAX_PREVIEW_HIGHLIGHT_BYTES, markdown_headings,
+from notepadview.rendering import (COMPACT_HIGHLIGHT_SCRIPT, MAX_PREVIEW_HIGHLIGHT_BYTES, markdown_headings,
                                render_code_preview, render_html, render_plain_text)
 from notepadview.editor import SourceDocument
 from notepadview.ui import build_ui, build_actions
@@ -1156,6 +1156,10 @@ class MainWindow(ChromeWindow):
                         root.setAttribute(attribute.name, attribute.value);
                     return true;
                 }
+                globalThis.nvSyntaxObserver?.disconnect();
+                for (const key of globalThis.nvSyntaxKeys || []) CSS.highlights.delete(key);
+                if (globalThis.nvPrepareCode)
+                    globalThis.nvPrepareCode(next);
                 getSelection().removeAllRanges();
                 // Release maps holding old DOM nodes before updating code blocks.
                 delete globalThis.nvSelection;
@@ -1164,12 +1168,12 @@ class MainWindow(ChromeWindow):
                 const newBlocks = [...next.body.children];
                 const reusable = new Map();
                 for (const block of oldBlocks) {
-                    const key = block.innerHTML;
+                    const key = block.nvOriginalHTML ?? block.innerHTML;
                     if (!reusable.has(key)) reusable.set(key, []);
                     reusable.get(key).push(block);
                 }
                 const desired = newBlocks.map(block => {
-                    const candidates = reusable.get(block.innerHTML);
+                    const candidates = reusable.get(block.nvOriginalHTML ?? block.innerHTML);
                     const current = candidates?.shift() || block;
                     if (block.hasAttribute('data-source-line'))
                         current.dataset.sourceLine = block.dataset.sourceLine;
@@ -1323,7 +1327,8 @@ class MainWindow(ChromeWindow):
                         if path != current_file:
                             path.unlink(missing_ok=True)
 
-        self.preview.page().runJavaScript('document.documentElement.dataset.previewGeneration',
+        self.preview.page().runJavaScript(COMPACT_HIGHLIGHT_SCRIPT +
+                                         ';document.documentElement.dataset.previewGeneration',
                                          QWebEngineScript.ApplicationWorld, ready)
 
     def update_encoding_menu(self):

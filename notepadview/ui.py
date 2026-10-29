@@ -4,9 +4,11 @@ from PySide6.QtCore import QEvent, QRectF, QSize, Qt
 from PySide6.QtGui import QActionGroup, QPainterPath, QPixmap, QRegion
 from PySide6.QtWidgets import (
     QCheckBox, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMenu, QMessageBox, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QStyle,
+    QMessageBox, QPushButton, QSizePolicy, QSplitter, QStackedWidget, QStyle,
     QTabBar, QToolBar, QToolButton, QVBoxLayout, QWidget,
 )
+
+from notepadview.theme import ThemedMenu as QMenu
 from PySide6.QtWebEngineCore import QWebEngineSettings
 
 from notepadview.editor import SourceEditor

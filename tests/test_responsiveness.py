@@ -153,6 +153,112 @@ def test_warm_document_switch_preserves_preview_page_and_mapping(window, tmp_pat
     assert all(key[0] != id(closed_session) for key in window._preview_cache)
 
 
+@pytest.mark.parametrize('count', [1500, 3500])
+def test_highlighted_json_defers_offscreen_layout_and_preserves_sync(window, count):
+    import json
+    from test_scroll_sync import js
+    window.new_document('json')
+    source = json.dumps([{'id': i, 'text': '中文内容' * 8} for i in range(count)],
+                        ensure_ascii=False, indent=2)
+    window.editor.setPlainText(source)
+    window.set_mode('split')
+    wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+    assert js(window, "getComputedStyle(document.querySelector('pre.highlight')).contentVisibility") == 'auto'
+    assert js(window, 'document.body.textContent') == source
+    assert js(window, "document.querySelectorAll('.highlight span').length") == 0
+    wait_for(lambda: js(window, "CSS.highlights.has('s2')"))
+    assert js(window, "getComputedStyle(document.querySelector('.highlight code'), '::highlight(s2)').color !== getComputedStyle(document.body).color")
+    start = source.rindex('中文内容')
+    window.editor.set_selection(start, start + 4)
+    wait_for(lambda: window.preview.page().selectedText() == '中文内容')
+    window.editor.verticalScrollBar().setValue(window.editor.verticalScrollBar().maximum())
+    wait_for(lambda: js(window, 'scrollY + innerHeight >= document.documentElement.scrollHeight - 2'))
+    window.editor.setFirstVisibleLine(0)
+    wait_for(lambda: window.scroll_position < 100)
+
+
+def test_large_highlighted_preview_cut_stays_responsive(window):
+    import json
+    import time
+    from test_scroll_sync import js
+
+    source = json.dumps([{'id': i, 'name': '中文合同', 'enabled': True,
+                          'values': [i, i + 1, i + 2]} for i in range(3500)],
+                        ensure_ascii=False, indent=2)
+    window.new_document('json')
+    window.editor.setPlainText(source)
+    window.set_mode('split')
+    wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+    window.preview.setFocus()
+    end = len(source) * 7 // 10
+    js(window, f'nvSelection.select(100,{end})')
+    wait_for(lambda: window.editor.selection_range() == (100, end))
+    started = time.perf_counter()
+    from PySide6.QtGui import QAction
+    cut = next(action for action in window.findChildren(QAction)
+               if action.shortcut().toString() == 'Ctrl+X')
+    cut.trigger()
+    expected = source[:100] + source[end:]
+    wait_for(lambda: window.editor.source_text() == expected)
+    wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+    elapsed = time.perf_counter() - started
+    assert js(window, 'document.body.textContent') == expected
+    from PySide6.QtWidgets import QApplication
+    assert QApplication.clipboard().text() == source[100:end]
+    print(f'large-json-cut-seconds: {elapsed:.3f}')
+    assert elapsed < 4, f'preview cut blocked for {elapsed:.2f}s'
+    window.edit_current('undo')
+    wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+    assert window.editor.source_text() == source
+    assert js(window, 'document.body.textContent') == source
+    wait_for(lambda: js(window, "CSS.highlights.has('s2')"))
+    assert js(window, "getComputedStyle(document.querySelector('.highlight code'), '::highlight(s2)').color !== getComputedStyle(document.body).color")
+    for theme in ('dark', 'light'):
+        window.set_theme(theme)
+        wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+        wait_for(lambda: js(window, "CSS.highlights.has('s2')"))
+        assert js(window, "getComputedStyle(document.querySelector('.highlight code'), '::highlight(s2)').color !== getComputedStyle(document.body).color")
+    for _ in range(2):
+        js(window, 'nvSelection.select(10,20)')
+        wait_for(lambda: window.editor.selection_range() == (10, 20))
+        cut.trigger()
+        wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+        assert js(window, 'document.body.textContent') == source[:10] + source[20:]
+        window.edit_current('undo')
+        wait_for(lambda: window._preview_ready and window.selection_sync.enabled())
+        assert js(window, 'document.body.textContent') == source
+
+
+def test_popup_theme_does_not_filter_document_object_events(window, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+    from notepadview.theme import apply_theme
+
+    app = QApplication.instance()
+    original = app._notepad_popup_filter
+    app.removeEventFilter(original)
+    del app._notepad_popup_filter
+    calls = []
+    install = QApplication.installEventFilter
+
+    def measured(self, event_filter):
+        calls.append(event_filter)
+        return install(self, event_filter)
+
+    monkeypatch.setattr(QApplication, 'installEventFilter', measured)
+    apply_theme(window)
+    assert app._notepad_popup_filter not in calls
+
+
+def test_file_drop_does_not_install_application_event_filter(window, monkeypatch):
+    from PySide6.QtWidgets import QApplication
+    from notepadview.file_drop import FileDropFilter
+
+    calls = []
+    monkeypatch.setattr(QApplication, 'installEventFilter', lambda self, obj: calls.append(obj))
+    event_filter = FileDropFilter(window)
+    assert event_filter not in calls
+
+
 def test_plain_selection_mapping_has_bounded_memory():
     from notepadview.selection_sync import character_pairs
     source = '中文 example line\n' * 20000

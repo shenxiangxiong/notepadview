@@ -10,7 +10,9 @@ from PySide6.QtGui import (
     QAction, QFont, QFontDatabase, QFontMetricsF, QIcon, QKeySequence, QPainter,
     QPalette, QPen, QPixmap, QPolygonF, QShortcut,
 )
-from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QMenu, QMenuBar, QToolButton, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QToolButton, QWidget
+
+from notepadview.theme import ThemedMenu as QMenu, ThemedMenuBar as QMenuBar
 
 
 _CAPTION_GLYPHS = {'minimize': '\ue921', 'maximize': '\ue922', 'restore': '\ue923', 'close': '\ue8bb'}

@@ -112,6 +112,8 @@ class ScrollSync(QObject):
         if self._last_preview_y is not None and abs(pos.y()-self._last_preview_y) < 1:
             return
         self._last_preview_y = pos.y()
+        if self._busy and self._direction == 'source':
+            return
         self._queue('preview')
 
     def _queue(self, direction):
@@ -140,8 +142,20 @@ class ScrollSync(QObject):
             line = editor.docLineFromVisible(visible)
             bar = editor.verticalScrollBar()
             bottom = bar.maximum() > 0 and bar.value() >= bar.maximum()
-            script = (f'if (globalThis.nvScrollMap) window.scrollTo(0, '
+            script = (f'globalThis.nvScrollSyncSerial = {serial}; '
+                      f'if (globalThis.nvScrollMap) window.scrollTo(0, '
                       + ('document.documentElement.scrollHeight' if bottom else f'nvScrollMap.toY({line})') + ');')
+            if bottom:
+                # 离屏块进入视口后高度会变化，等待布局稳定再对齐底部。
+                script += (f'const generation = {generation}; let frames = 8; '
+                           'function settleBottom() {'
+                           f'if (globalThis.nvScrollSyncSerial !== {serial} || '
+                           'Number(document.documentElement.dataset.previewGeneration) !== generation) return;'
+                           'const last = document.body.lastElementChild;'
+                           'if (last) last.scrollIntoView({block:"end"});'
+                           'window.scrollTo(0, document.documentElement.scrollHeight);'
+                           'if (--frames > 0) requestAnimationFrame(settleBottom);'
+                           '} if (document.querySelector("pre.highlight")) requestAnimationFrame(settleBottom);')
         else:
             script = ('globalThis.nvScrollMap ? JSON.stringify([nvScrollMap.toLine(scrollY), '
                       'scrollY+innerHeight >= document.documentElement.scrollHeight-2]) : null')

@@ -6,8 +6,10 @@ import pymupdf as fitz
 from PySide6.QtCore import QRectF, QSaveFile, QIODevice, Qt, Signal, Slot, QTimer
 from PySide6.QtGui import QColor, QFont, QImage, QPixmap, QPen, QUndoStack
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel,
-    QSpinBox, QDoubleSpinBox, QFontComboBox, QGraphicsScene, QGraphicsView,
-    QInputDialog, QColorDialog, QMessageBox, QFileDialog, QScrollArea, QFrame, QPlainTextEdit, QMenu, QApplication)
+    QSpinBox, QDoubleSpinBox, QGraphicsScene, QGraphicsView,
+    QInputDialog, QColorDialog, QMessageBox, QFileDialog, QScrollArea, QFrame, QPlainTextEdit, QApplication)
+
+from notepadview.theme import ThemedFontComboBox as QFontComboBox, ThemedMenu as QMenu
 
 from notepadview.pdf_model import PdfModel
 from notepadview.image_editor import ImageChange, FontChoiceDelegate

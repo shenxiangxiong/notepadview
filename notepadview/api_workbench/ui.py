@@ -9,10 +9,12 @@ import httpx
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QRunnable, QSize, Qt, QThreadPool, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QInputDialog,
-    QLabel, QLineEdit, QMenu, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTabWidget,
+    QDialog, QDialogButtonBox, QFileDialog, QHBoxLayout, QInputDialog,
+    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton, QSplitter, QTabWidget,
     QScrollArea, QToolTip, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,
 )
+
+from notepadview.theme import ThemedComboBox as QComboBox, ThemedMenu as QMenu
 
 from notepadview.api_workbench.models import (
     ApiCollection, Environment, RequestDefinition, RequestHistory,

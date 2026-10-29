@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QTimer, Qt
-from PySide6.QtWidgets import QApplication, QWidget
+from PySide6.QtWidgets import QWidget
 
 
 DOCUMENT_SUFFIXES = {'.md', '.markdown', '.mdown', '.mkd', '.txt', '.json', '.xml', '.sql'}
@@ -12,9 +12,20 @@ class FileDropFilter(QObject):
         super().__init__(window)
         self.window = window
         window.setAcceptDrops(True)
-        QApplication.instance().installEventFilter(self)
+        self.watch(window)
+        self.watch(window.find_bar)
+
+    def watch(self, widget):
+        widget.installEventFilter(self)
+        for child in widget.findChildren(QWidget):
+            child.installEventFilter(self)
 
     def eventFilter(self, watched, event):
+        if event.type() == QEvent.ChildAdded:
+            child = event.child()
+            if isinstance(child, QWidget):
+                self.watch(child)
+            return False
         if event.type() not in (QEvent.DragEnter, QEvent.DragMove, QEvent.Drop):
             return False
         if not isinstance(watched, QWidget):

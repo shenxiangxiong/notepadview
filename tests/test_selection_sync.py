@@ -84,6 +84,7 @@ def test_code_edit_updates_preview_without_navigation(window):
     assert not loads
     window.new_document('python')
     window.editor.setPlainText('other = "中文😀"')
+    window.set_mode('split')
     window.render_preview()
     wait_for(window.selection_sync.enabled)
     assert js(window, 'document.body.textContent') == 'other = "中文😀"'

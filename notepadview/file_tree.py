@@ -4,7 +4,9 @@ import json
 from PySide6.QtCore import QMimeData, QSignalBlocker, QSize, Qt
 from PySide6.QtGui import QDrag
 from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QInputDialog,
-                              QMenu, QStyle, QTreeWidget, QTreeWidgetItem)
+                              QStyle, QTreeWidget, QTreeWidgetItem)
+
+from notepadview.theme import ThemedMenu as QMenu
 
 
 class FileTree(QTreeWidget):

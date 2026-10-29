@@ -8,7 +8,9 @@ from PySide6.QtWidgets import (
 )
 
 from notepadview.palettes import THEMES, theme_colors
-from notepadview.theme import PopupThemeFilter, apply_theme, theme_stylesheet
+from notepadview.theme import (PopupThemeFilter, apply_theme, theme_stylesheet,
+                               ThemedComboBox as QComboBox, ThemedMenu as QMenu,
+                               ThemedMenuBar)
 
 
 def test_nv_palette_matches_portal_and_has_spin_assets():
@@ -51,11 +53,10 @@ def qt_style(app, request):
 @pytest.fixture(params=tuple(THEMES))
 def themed_window(app, qt_style, request):
     window = QMainWindow()
+    window.setMenuBar(ThemedMenuBar(window))
     window.theme = request.param
     window.setStyleSheet(theme_stylesheet(window.theme))
     window.resize(420, 320)
-    popup_filter = PopupThemeFilter(app)
-    app.installEventFilter(popup_filter)
     window.show()
     app.processEvents()
     yield window
@@ -65,7 +66,6 @@ def themed_window(app, qt_style, request):
     window.close()
     window.deleteLater()
     app.processEvents()
-    app.removeEventFilter(popup_filter)
 
 
 def assert_rounded_popup(popup):
@@ -301,6 +301,9 @@ def test_apply_theme_without_internal_find_close_button(app, qt_style):
     window.undo_action = QAction(window)
     window.redo_action = QAction(window)
     window.export_action = QAction(window)
+    for name in ('find_previous_button', 'find_next_button', 'replace_button',
+                 'replace_all_button', 'find_close_button'):
+        setattr(window, name, QAction(window))
     try:
         for theme in THEMES:
             window.theme = theme
