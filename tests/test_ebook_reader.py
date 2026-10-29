@@ -71,8 +71,28 @@ def test_reads_epub_title_spine_navigation_and_local_resources(tmp_path):
     assert book.chapters[0].relative_path == Path('EPUB/text/one.xhtml')
 
 
+@pytest.mark.parametrize('doctype', ['<!DOCTYPE html>', '<!DOCTYPE html >'])
+def test_reads_epub_navigation_with_html5_doctype(tmp_path, doctype):
+    source = tmp_path / 'html5.epub'
+    write_epub(source, replacement={
+        'EPUB/nav.xhtml': doctype + '''<html xmlns="http://www.w3.org/1999/xhtml"
+            xmlns:epub="http://www.idpf.org/2007/ops"><body>
+            <nav epub:type="toc"><a href="text/one.xhtml">Chapter One</a></nav>
+            </body></html>''',
+    })
+
+    book = read_epub(source, tmp_path / 'cache')
+
+    assert len(book.chapters) == 2
+    assert book.toc[0].title == 'Chapter One'
+    assert book.toc[0].chapter == 0
+
+
 @pytest.mark.parametrize('replacement', [
     {'EPUB/package.opf': b'<!DOCTYPE package [<!ENTITY x SYSTEM "file:///secret">]><package/>'},
+    {'EPUB/nav.xhtml': b'<!DOCTYPE html SYSTEM "https://example.invalid/html.dtd"><html/>'},
+    {'EPUB/nav.xhtml': b'<!DOCTYPE html [<!ENTITY x "expanded">]><html>&x;</html>'},
+    {'EPUB/nav.xhtml': b'<!DOCTYPE html><!ENTITY x "expanded"><html/>'},
 ])
 def test_rejects_epub_xml_with_entities(tmp_path, replacement):
     source = tmp_path / 'unsafe.epub'
@@ -111,6 +131,55 @@ def test_rejects_corrupt_or_incomplete_epub(tmp_path):
     for source in (corrupt, incomplete):
         with pytest.raises(EbookReadError):
             read_epub(source, tmp_path / 'cache')
+
+
+def test_reader_theme_updates_existing_page_and_future_chapters(app):
+    from PySide6.QtCore import QEventLoop, QTimer
+    from PySide6.QtWebEngineCore import QWebEngineScript
+    from notepadview.palettes import theme_colors
+
+    reader = EbookReader()
+
+    def wait_for_load(operation):
+        loop = QEventLoop()
+        timer = QTimer()
+        timer.setSingleShot(True)
+        timer.timeout.connect(loop.quit)
+        reader.view.loadFinished.connect(loop.quit)
+        timer.start(5000)
+        operation()
+        loop.exec()
+        reader.view.loadFinished.disconnect(loop.quit)
+        timer.stop()
+
+    def page_colors():
+        loop = QEventLoop()
+        result = []
+        reader.page.runJavaScript(
+            'JSON.stringify([getComputedStyle(document.body).backgroundColor, '
+            'getComputedStyle(document.body).color])',
+            QWebEngineScript.ApplicationWorld,
+            lambda value: (result.append(value), loop.quit()))
+        QTimer.singleShot(5000, loop.quit)
+        loop.exec()
+        import json
+        return json.loads(result[0])
+
+    try:
+        reader.set_theme('dark')
+        wait_for_load(lambda: reader.page.setHtml(
+            '<html><body style="background:white;color:black">Chapter</body></html>'))
+        assert reader.page.backgroundColor().name() == theme_colors('dark')['bg']
+        assert page_colors() == ['rgb(32, 33, 36)', 'rgb(229, 231, 235)']
+        reader.set_theme('soft')
+        assert page_colors() == ['rgb(232, 241, 232)', 'rgb(40, 60, 50)']
+        wait_for_load(lambda: reader.page.setHtml('<html><body>Next chapter</body></html>'))
+        assert page_colors() == ['rgb(232, 241, 232)', 'rgb(40, 60, 50)']
+        reader.set_theme('light')
+        assert reader.page.backgroundColor().name() != '#ffffff'
+        assert not reader.view.settings().testAttribute(QWebEngineSettings.JavascriptEnabled)
+    finally:
+        reader.close()
 
 
 def test_reader_navigates_chapters_and_enforces_local_readonly_policy(

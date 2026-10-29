@@ -48,7 +48,7 @@ def validate(model):
         if not isinstance(page, dict) or not isinstance(page.get('id'), str) or page['id'] in page_ids:
             raise ValueError('无效或重复的页面 ID。')
         if set(page) - {'id', 'name', 'kind', 'nodes', 'edges'}:
-            raise ValueError('????????')
+            raise ValueError('页面包含未支持的属性。')
         page_ids.add(page['id'])
         if page.get('kind') not in ('mindmap', 'flowchart') or not isinstance(page.get('name'), str):
             raise ValueError('无效的页面类型或名称。')
@@ -57,7 +57,7 @@ def validate(model):
         ids = set()
         for node in page['nodes']:
             if not isinstance(node, dict) or set(node) - {'id', 'text', 'x', 'y', 'width', 'height', 'shape', 'parent'}:
-                raise ValueError('????????')
+                raise ValueError('节点结构无效或包含未支持的属性。')
             count += 1
             if count > MAX_NODES:
                 raise ValueError('节点超过 5000 个，无法打开。')
@@ -88,10 +88,10 @@ def validate(model):
             raise ValueError('连线数量过多。')
         for edge in page['edges']:
             if not isinstance(edge, dict) or set(edge) - {'id', 'source', 'target', 'text', 'arrow', 'bend'}:
-                raise ValueError('????????')
+                raise ValueError('连线结构无效或包含未支持的属性。')
             bend = edge.get('bend')
             if bend is not None and (not isinstance(bend, dict) or set(bend) != {'x', 'y'} or any(type(v) not in (int, float) or not math.isfinite(v) or abs(v) > 1000000 for v in bend.values())):
-                raise ValueError('????????')
+                raise ValueError('连线折点坐标无效。')
             if not isinstance(edge.get('id'), str) or edge['id'] in edge_ids:
                 raise ValueError('连线 ID 无效或重复。')
             edge_ids.add(edge['id'])
@@ -152,7 +152,7 @@ def _drawio(data):
                 except (zlib.error, UnicodeError, ValueError) as error:
                     raise ValueError('无法解压 draw.io 页面：' + str(error)) from error
         if graph.attrib:
-            _warn(model, '??????????????????')
+            _warn(model, '画布显示与布局设置无法完整保留')
         _unknown(model, graph, ('dx', 'dy', 'grid', 'gridSize', 'guides', 'tooltips', 'connect', 'arrows', 'fold', 'page', 'pageScale', 'pageWidth', 'pageHeight', 'math', 'shadow', 'background'), ('root',), '画布')
         cells = graph.find('root')
         if cells is None:

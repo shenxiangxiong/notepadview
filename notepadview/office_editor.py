@@ -58,7 +58,7 @@ def _package(data, kind):
                     if kind == 'docx' and name == 'word/document.xml':
                         unsupported = {'ins', 'del', 'moveFrom', 'moveTo', 'fldSimple', 'fldChar', 'instrText', 'object', 'altChunk', 'hyperlink', 'sdt', 'numPr', 'oMath', 'oMathPara', 'anchor', 'txbxContent', 'gridSpan', 'vMerge', 'bookmarkStart', 'commentRangeStart', 'footnoteReference', 'endnoteReference', 'pict'}
                         if any(e.tag.split('}')[-1] == 'sectPr' for p in root.iter() if p.tag.split('}')[-1] == 'pPr' for e in p):
-                            unsafe.append('????')
+                            unsafe.append('分节设置')
                         if any(e.tag.split('}')[-1] in unsupported for e in root.iter()):
                             unsafe.append('复杂 Word 结构')
                         if any(sum(1 for node in table.iter() if node.tag.split('}')[-1] == 'tbl') > 1

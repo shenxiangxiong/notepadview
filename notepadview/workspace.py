@@ -63,9 +63,7 @@ class WorkspaceController:
                                           encoding=data.get('encoding', 'utf-8'),
                                           newline=data.get('newline', '\n'),
                                           preview_state=data.get('preview_state', {}),
-                                          reader_state=data.get('reader_state', {}),
-                                          view_mode=data.get('view_mode', window.default_view),
-                                          last_single_view=data.get('last_single_view', window.last_single_view))
+                                          reader_state=data.get('reader_state', {}))
                 session.refresh_text_format(data['text'])
                 if session.kind == 'diagram':
                     window._attach_diagram(session, data['diagram_model'], data['modified'])
@@ -147,8 +145,6 @@ class WorkspaceController:
                               'preview_state': deepcopy(session.preview_state),
                               **({'reader_state': deepcopy(session.reader_state)}
                                  if session.kind == 'ebook' else {}),
-                              'view_mode': session.view_mode,
-                              'last_single_view': session.last_single_view,
                               **({('office_edit' if session.kind in ('docx', 'xlsx') else 'image_edit'): session.image_editor.snapshot()} if session.image_editor is not None else {}),
                               **({'diagram_model': deepcopy(session.diagram.model)} if session.kind == 'diagram' else {})})
         self._texts = {key: value for key, value in self._texts.items() if key in active_ids}

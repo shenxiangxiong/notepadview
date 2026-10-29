@@ -56,7 +56,7 @@ def test_empty_duplicate_and_batch_removal_release_every_document(window, monkey
     assert window.current_session is None
 
 
-def test_each_document_view_and_toggle_survive_restart(window):
+def test_each_document_returns_to_source_after_switch_and_restart(window):
     window.set_mode('source')
     window.new_document('md')
     first = window.current_session
@@ -64,24 +64,26 @@ def test_each_document_view_and_toggle_survive_restart(window):
     window.set_mode('split')
     window.new_document('txt')
     second = window.current_session
-    assert window.mode == 'split'
-    window.set_mode('source')
+    assert window.mode == 'source'
     window.document_tabs.setCurrentIndex(window._session_tab_index(first))
+    assert window.mode == 'source'
+    window.toggle_split()
     assert window.mode == 'split'
     window.toggle_split()
-    assert window.mode == 'preview'
+    assert window.mode == 'source'
+    window.set_mode('preview')
     window.show_find()
     assert window.mode == 'preview'
     window.hide_find()
-    assert first.view_mode == 'preview'
+    assert first.view_mode == 'source'
     assert window.flush_workspace()
     reopened = type(window)(settings=window.settings)
     try:
-        assert reopened.mode == 'preview'
+        assert reopened.mode == 'source'
         reopened.document_tabs.setCurrentIndex(reopened._session_tab_index(next(s for s in reopened.sessions if s.id == second.id)))
         assert reopened.mode == 'source'
         reopened.document_tabs.setCurrentIndex(reopened._session_tab_index(next(s for s in reopened.sessions if s.id == first.id)))
-        assert reopened.mode == 'preview'
+        assert reopened.mode == 'source'
     finally:
         reopened.close()
 
@@ -95,8 +97,8 @@ def test_legacy_workspace_uses_default_view_and_sqlite(window):
     before = legacy.read_bytes()
     reopened = type(window)(settings=window.settings)
     try:
-        assert reopened.mode == 'preview'
-        assert reopened.current_session.view_mode == 'preview'
+        assert reopened.mode == 'source'
+        assert reopened.current_session.view_mode == 'source'
         assert reopened.workspace.store.path.suffix == '.sqlite3'
         assert reopened.flush_workspace()
         assert legacy.read_bytes() == before

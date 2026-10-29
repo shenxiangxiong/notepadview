@@ -105,8 +105,8 @@ def build_actions(w):
     menu.addAction(w.new_plain_text_action)
     menu.addSeparator()
     menu.addAction(w.export_action)
-    menu.addAction(a('????', lambda: w.new_diagram('mindmap')))
-    menu.addAction(a('?????', lambda: w.new_diagram('flowchart')))
+    menu.addAction(a('新建思维导图', lambda: w.new_diagram('mindmap')))
+    menu.addAction(a('新建流程图', lambda: w.new_diagram('flowchart')))
     w.recent_menu = menu.addMenu('最近打开')
     menu.addSeparator()
     menu.addAction(a('退出', w.close, 'Alt+F4'))
@@ -179,6 +179,9 @@ def build_actions(w):
     w.api_workbench_action.setVisible(False)
     menu_bar.addAction(w.api_workbench_action)
     help_menu = menu_bar.addMenu('帮助')
+    w.help_action = a('使用帮助', w.show_help, 'F1')
+    help_menu.addAction(w.help_action)
+    help_menu.addSeparator()
     help_menu.addAction(a('关于 Notepad View', lambda: QMessageBox.about(w, 'Notepad View',
                          'Notepad View 1.0.0\n\n文档编辑器\n\n支持 Markdown、TXT、JSON、XML、SQL。')))
 
@@ -407,6 +410,7 @@ class FindReplaceBar(QWidget):
         self.preferred_width = 420
         self._resize_start = None
         self.resize_handle = QWidget(self)
+        self.resize_handle.setObjectName('findResizeHandle')
         self.resize_handle.setCursor(Qt.SizeHorCursor)
         self.resize_handle.setToolTip('拖动调整查找栏宽度')
         self.resize_handle.installEventFilter(self)

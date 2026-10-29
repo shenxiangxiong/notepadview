@@ -1,9 +1,14 @@
 """Isolated, read-only chapter viewer for EPUB content."""
+import json
 from pathlib import Path
+
+from PySide6.QtGui import QColor
+from notepadview.palettes import theme_colors
 
 from PySide6.QtCore import QUrl, Signal
 from PySide6.QtWebEngineCore import (QWebEnginePage, QWebEngineProfile,
-                                    QWebEngineSettings, QWebEngineUrlRequestInterceptor)
+                                    QWebEngineScript, QWebEngineSettings,
+                                    QWebEngineUrlRequestInterceptor)
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QLineEdit, QListWidget,
                               QListWidgetItem, QPushButton, QVBoxLayout, QWidget)
@@ -99,6 +104,28 @@ class EbookReader(QWidget):
         layout.addLayout(toolbar)
         layout.addLayout(content, 1)
 
+    def set_theme(self, theme):
+        colors = theme_colors(theme)
+        background = colors['pane'] if colors['bg'].lower() == '#ffffff' else colors['bg']
+        self.page.setBackgroundColor(QColor(background))
+        css = (
+            f'html, body {{ background: {background} !important; color: {colors["fg"]} !important; }}'
+            f'body * {{ color: inherit !important; background-color: transparent !important; }}'
+            f'a, a * {{ color: {colors["accent"]} !important; }}'
+            f'::selection {{ background: {colors["selection"]} !important; }}'
+        )
+        source = '''(() => {
+            let style = document.getElementById('notepadview-reader-theme');
+            if (!style) {
+                style = document.createElement('style');
+                style.id = 'notepadview-reader-theme';
+                (document.head || document.documentElement).appendChild(style);
+            }
+            style.textContent = %s;
+        })();''' % json.dumps(css)
+        self._theme_source = source
+        self.page.runJavaScript(source, QWebEngineScript.ApplicationWorld)
+
     def _is_allowed_resource(self, url):
         if url.scheme() == 'data':
             return True
@@ -172,6 +199,8 @@ class EbookReader(QWidget):
         if not succeeded:
             self.show_error('无法显示电子书章节。')
             return
+        if hasattr(self, '_theme_source'):
+            self.page.runJavaScript(self._theme_source, QWebEngineScript.ApplicationWorld)
         if self._pending_scroll:
             scroll = self._pending_scroll
             self._pending_scroll = 0.0

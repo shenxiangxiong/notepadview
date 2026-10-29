@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from html import escape
+import json
 import logging
 from pathlib import Path
 import re
@@ -88,6 +89,7 @@ class DocumentSession:
     last_single_view: str = 'source'
     format_suffix: str | None = None
     untyped: bool = False
+    _text_format_key: tuple | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         if self.format_suffix is None and self.path is not None:
@@ -95,6 +97,9 @@ class DocumentSession:
 
     def refresh_text_format(self, source=None):
         if self.kind != 'text' or self.path is None:
+            return
+        key = (self.path, self.document.revision, self.manual_format, self.document_format)
+        if source is None and key == self._text_format_key:
             return
         suffix = self.path.suffix.casefold()
         inferred = type_for_path(self.path)
@@ -110,6 +115,7 @@ class DocumentSession:
                 if source is None:
                     source = bytes(self.document.get_char_range(0, self.document.length())).decode('utf-8')
                 self.document_format = detect_text_type(self.path, source)
+        self._text_format_key = (self.path, self.document.revision, self.manual_format, self.document_format)
 
     @property
     def name(self):
@@ -144,13 +150,9 @@ class MainWindow(ChromeWindow):
         self.new_document_format = 'md'
         self.is_plain_text = False
         self.theme = self.settings.value('theme', 'nv')
-        self.default_view = self.settings.value('default_view', 'split')
-        if self.default_view not in ('source', 'split', 'preview'):
-            self.default_view = 'split'
-        self.mode = self.default_view
-        self.last_single_view = self.settings.value('last_single_view', 'source')
-        if self.last_single_view not in ('source', 'preview'):
-            self.last_single_view = 'source'
+        self.default_view = 'source'
+        self.mode = 'source'
+        self.last_single_view = 'source'
         self.sidebar_position = self.settings.value('sidebar_position', 'right')
         if self.sidebar_position not in ('left', 'right'):
             self.sidebar_position = 'right'
@@ -181,15 +183,29 @@ class MainWindow(ChromeWindow):
         self.stats_timer.setSingleShot(True)
         self.stats_timer.setInterval(180)
         self.stats_timer.timeout.connect(self.update_statistics)
+        self._stats_work = None
+        self._pending_stats = None
+        self.stats_work_timer = QTimer(self)
+        self.stats_work_timer.setInterval(25)
+        self.stats_work_timer.timeout.connect(self._poll_statistics_work)
         self.outline_timer = QTimer(self)
         self.outline_timer.setSingleShot(True)
         self.outline_timer.setInterval(300)
         self.outline_timer.timeout.connect(self.update_outline)
+        self._outline_work = None
+        self._pending_outline = None
+        self.outline_work_timer = QTimer(self)
+        self.outline_work_timer.setInterval(30)
+        self.outline_work_timer.timeout.connect(self._poll_outline_work)
         self._stats_count = 0
         self._stats_char_count = 0
         self.editor.cursorPositionChanged.connect(self.update_status)
         self.preview.loadFinished.connect(self._preview_loaded)
         self.preview.page().scrollPositionChanged.connect(lambda pos: setattr(self, 'scroll_position', pos.y()))
+        from notepadview.scroll_sync import ScrollSync
+        self.scroll_sync = ScrollSync(self)
+        from notepadview.selection_sync import SelectionSync
+        self.selection_sync = SelectionSync(self)
         self.set_theme(self.theme)
         self.editor.textChanged.connect(self._changed)
         self.refresh_recent()
@@ -333,6 +349,9 @@ class MainWindow(ChromeWindow):
             self._suspend_document_events = False
         if self.api_workbench is not None:
             self.api_workbench.set_theme(self.theme)
+        for session in self.sessions:
+            if session.ebook_widget is not None:
+                session.ebook_widget.set_theme(self.theme)
         self.settings.setValue('theme', self.theme)
         self._schedule_preview()
 
@@ -387,18 +406,20 @@ class MainWindow(ChromeWindow):
         self.split_button.setChecked(mode == 'split')
         if mode == 'split':
             self.editor_split.setSizes([max(1, self.editor_split.width() // 2)] * 2)
+            if getattr(self, '_preview_ready', False) and hasattr(self, 'selection_sync'):
+                QTimer.singleShot(0, self.selection_sync, self.selection_sync.loaded)
 
         self.view_actions[mode].setChecked(True)
-        if remember:
-            if mode in ('source', 'preview'):
-                self.last_single_view = mode
-                self.settings.setValue('last_single_view', mode)
-            if self.current_session is not None:
-                self.current_session.view_mode = mode
-                self.current_session.last_single_view = self.last_single_view
-            self.default_view = mode
-            self.settings.setValue('default_view', mode)
-            self.schedule_workspace_save()
+        if mode in ('source', 'preview'):
+            self.last_single_view = mode
+
+    def show_help(self):
+        from notepadview.help import HelpDialog
+        if getattr(self, 'help_dialog', None) is None:
+            self.help_dialog = HelpDialog(self)
+        self.help_dialog.show()
+        self.help_dialog.raise_()
+        self.help_dialog.activateWindow()
 
     def toggle_split(self):
         self.set_mode(self.last_single_view if self.mode == 'split' else 'split')
@@ -453,6 +474,9 @@ class MainWindow(ChromeWindow):
             return
         if self.current_session is None:
             self._adopt_current_document()
+        self._preview_generation += 1
+        self._preview_ready = False
+        self._pending_preview = None
         self.timer.start()
         self.stats_timer.start()
         if self.editor.length() <= 16 * 1024:
@@ -474,7 +498,87 @@ class MainWindow(ChromeWindow):
         self._bind_document(session)
         self.update_title()
 
+    def _preview_cache_key(self, session):
+        return (id(session), session.document.revision, str(session.path),
+                session.document_format, self.theme)
+
+    def _cache_active_preview(self):
+        session = self.current_session
+        if session is None or session.kind != 'text' or not self._preview_ready:
+            return
+        key = self._preview_cache_key(session)
+        if (session.document_format == 'html'
+                or key != getattr(self, '_preview_content_key', None)):
+            return
+        cache = getattr(self, '_preview_cache', {})
+        cache.pop(key, None)
+        cache[key] = self.selection_sync.mapping if self.selection_sync.enabled() else None
+        while len(cache) > 2:
+            del cache[next(iter(cache))]
+        self._preview_cache = cache
+        self.preview.page().runJavaScript('''((key) => {
+            const cache = globalThis.nvDocumentCache ||= new Map();
+            cache.delete(key);
+            cache.set(key, {head: [...document.head.childNodes],
+                body: [...document.body.childNodes],
+                attributes: [...document.documentElement.attributes].map(a => [a.name, a.value]),
+                scroll: globalThis.nvScrollMap, selection: globalThis.nvSelection});
+            while (cache.size > 2) cache.delete(cache.keys().next().value);
+        })(''' + json.dumps(repr(key)) + ')', QWebEngineScript.ApplicationWorld)
+
+    def _restore_cached_preview(self, session):
+        key = self._preview_cache_key(session)
+        cache = getattr(self, '_preview_cache', {})
+        if key not in cache or self.new_document_format == 'html':
+            return False
+        generation = self._preview_generation
+        mapping = cache[key]
+        script = '''((key, generation) => {
+            const saved = globalThis.nvDocumentCache?.get(key);
+            if (!saved) return false;
+            getSelection().removeAllRanges();
+            document.head.replaceChildren(...saved.head);
+            document.body.replaceChildren(...saved.body);
+            const root = document.documentElement;
+            for (const attribute of [...root.attributes]) root.removeAttribute(attribute.name);
+            for (const [name, value] of saved.attributes) root.setAttribute(name, value);
+            root.dataset.previewGeneration = generation;
+            globalThis.nvScrollMap = saved.scroll;
+            globalThis.nvSelection = saved.selection;
+            return true;
+        })(''' + json.dumps(repr(key)) + ', ' + json.dumps(str(generation)) + ')'
+
+        def restored(success):
+            if generation != self._preview_generation:
+                return
+            if not success:
+                self.render_preview()
+                return
+            self._preview_ready = True
+            self._preview_content_key = key
+            self.scroll_sync.reset()
+            if mapping is not None:
+                sync = self.selection_sync
+                sync.mapping = mapping
+                sync._generation = generation
+                sync._source_range = None
+                sync._preview_range = ()
+                sync._from_source()
+            else:
+                self.selection_sync.loaded()
+            self._apply_preview_navigation()
+
+        self.preview.page().runJavaScript(script, QWebEngineScript.ApplicationWorld, restored)
+        return True
+
     def _bind_document(self, session):
+        self._cache_active_preview()
+        self.timer.stop()
+        self._preview_ready = False
+        self._preview_generation += 1
+        self._pending_preview = None
+        self.selection_sync._invalidate()
+        self.scroll_sync.reset()
         session.refresh_text_format()
         if self.current_session is not None and self.current_session is not session:
             self.current_session.selection = self.editor.selection_state()
@@ -492,13 +596,12 @@ class MainWindow(ChromeWindow):
                 self._bound_document.redoAvailable.disconnect(self.redo_action.setEnabled)
             except RuntimeError:
                 pass
-        if session.view_mode is None:
-            session.view_mode = self.default_view
-            session.last_single_view = self.settings.value('last_single_view', 'source')
+        session.view_mode = 'source'
+        session.last_single_view = 'source'
         self.current_session = session
-        self.last_single_view = session.last_single_view
+        self.last_single_view = 'source'
         if session.kind == 'text':
-            self.set_mode(session.view_mode, remember=False)
+            self.set_mode('source', remember=False)
         else:
             self.mode = 'preview'
             self.view_actions['preview'].setChecked(True)
@@ -540,8 +643,9 @@ class MainWindow(ChromeWindow):
             self.update_statistics()
         self.update_status()
         self.scroll_position = session.preview_position
-        self._preview_target = ('scroll', session.preview_position) if session.preview_position else None
-        self._schedule_preview()
+        self._preview_target = ('scroll', session.preview_position)
+        if not self._restore_cached_preview(session):
+            self._schedule_preview()
         self.schedule_workspace_save()
 
     def _load_session_preview(self, session):
@@ -551,6 +655,7 @@ class MainWindow(ChromeWindow):
             if session.ebook_widget is None:
                 from notepadview.ebook_reader_widget import EbookReader
                 widget = EbookReader(self)
+                widget.set_theme(self.theme)
                 widget.stateChanged.connect(
                     lambda session=session: self._ebook_state_changed(session))
                 session.ebook_widget = widget
@@ -974,6 +1079,13 @@ class MainWindow(ChromeWindow):
         if session in self.sessions:
             self.sessions.remove(session)
         self.document_tabs.removeTab(index)
+        cache = getattr(self, '_preview_cache', {})
+        removed = [key for key in cache if key[0] == id(session)]
+        for key in removed:
+            del cache[key]
+        self.preview.page().runJavaScript(
+            'for (const key of ' + json.dumps([repr(key) for key in removed])
+            + ') globalThis.nvDocumentCache?.delete(key);', QWebEngineScript.ApplicationWorld)
         if self.document_tabs.count() == 0:
             self._clear_active_document()
         self._release_diagram(session)
@@ -997,9 +1109,11 @@ class MainWindow(ChromeWindow):
         if self._preview_target is None:
             self._preview_target = ('position', self.scroll_position)
         self._preview_ready = False
+        self._preview_content_key = (self._preview_cache_key(self.current_session)
+                                     if self.current_session is not None else None)
         self._preview_generation += 1
         source = self.editor.source_text()
-        if self.editor.length() > MAX_PREVIEW_HIGHLIGHT_BYTES:
+        if self.editor.length() > 16 * 1024:
             self._pending_preview = {'source': source, 'language': self.new_document_format,
                                      'theme': self.theme, 'generation': self._preview_generation,
                                      'done': Event(), 'html': None}
@@ -1016,6 +1130,77 @@ class MainWindow(ChromeWindow):
         html, count = re.subn(r'<html\b', lambda match: match.group() + marker, html, count=1, flags=re.I)
         if not count:
             html = '<!doctype html><html' + marker + '><head></head><body>' + html + '</body></html>'
+        if self.new_document_format != 'html':
+            if not re.search(r'<base\b', html, re.I):
+                base = '<base href="' + escape(self.base_url(), quote=True) + '">'
+                html = re.sub(r'<head\b[^>]*>', lambda match: match.group() + base,
+                              html, count=1, flags=re.I)
+            content_key = getattr(self, '_preview_content_key', None)
+            cache_key = str(content_key[0]) if content_key is not None else ''
+            marker = ' data-document-cache-key="' + escape(cache_key, quote=True) + '"'
+            html = html.replace('<html ', '<html' + marker + ' ', 1)
+            script = '''((html) => {
+                const next = new DOMParser().parseFromString(html, 'text/html');
+                const root = document.documentElement;
+                if (!root.dataset.documentCacheKey) return false;
+                if (root.dataset.documentCacheKey !== next.documentElement.dataset.documentCacheKey ||
+                        !root.dataset.codePreview || root.dataset.codePreview !==
+                        next.documentElement.dataset.codePreview) {
+                    getSelection().removeAllRanges();
+                    delete globalThis.nvSelection;
+                    delete globalThis.nvScrollMap;
+                    document.head.replaceChildren(...next.head.childNodes);
+                    document.body.replaceChildren(...next.body.childNodes);
+                    for (const attribute of [...root.attributes]) root.removeAttribute(attribute.name);
+                    for (const attribute of [...next.documentElement.attributes])
+                        root.setAttribute(attribute.name, attribute.value);
+                    return true;
+                }
+                getSelection().removeAllRanges();
+                // Release maps holding old DOM nodes before updating code blocks.
+                delete globalThis.nvSelection;
+                delete globalThis.nvScrollMap;
+                const oldBlocks = [...document.body.children];
+                const newBlocks = [...next.body.children];
+                const reusable = new Map();
+                for (const block of oldBlocks) {
+                    const key = block.innerHTML;
+                    if (!reusable.has(key)) reusable.set(key, []);
+                    reusable.get(key).push(block);
+                }
+                const desired = newBlocks.map(block => {
+                    const candidates = reusable.get(block.innerHTML);
+                    const current = candidates?.shift() || block;
+                    if (block.hasAttribute('data-source-line'))
+                        current.dataset.sourceLine = block.dataset.sourceLine;
+                    return current;
+                });
+                const kept = new Set(desired);
+                for (const block of oldBlocks) if (!kept.has(block)) block.remove();
+                let cursor = document.body.firstElementChild;
+                for (const block of desired) {
+                    if (block === cursor) cursor = cursor.nextElementSibling;
+                    else document.body.insertBefore(block, cursor);
+                }
+                root.dataset.previewGeneration = next.documentElement.dataset.previewGeneration;
+                return true;
+            })(''' + json.dumps(html) + ')'
+
+            def updated(success):
+                if generation != self._preview_generation:
+                    return
+                if success:
+                    self._preview_loaded(True)
+                else:
+                    self._load_preview_html(html, generation)
+
+            self.preview.page().runJavaScript(script, QWebEngineScript.ApplicationWorld, updated)
+        else:
+            self._load_preview_html(html, generation)
+
+    def _load_preview_html(self, html, generation):
+        if generation != self._preview_generation:
+            return
         if len(html.encode('utf-8')) > 512 * 1024 and self._preview_directory.isValid():
             if not re.search(r'<base\b', html, re.I):
                 base = '<base href="' + escape(self.base_url(), quote=True) + '">'
@@ -1129,6 +1314,8 @@ class MainWindow(ChromeWindow):
         def ready(loaded_generation):
             if generation == self._preview_generation and loaded_generation == str(generation):
                 self._preview_ready = True
+                self.scroll_sync.loaded()
+                self.selection_sync.loaded()
                 self._apply_preview_navigation()
                 if self._preview_directory.isValid():
                     current_file = Path(self.preview.url().toLocalFile())
@@ -1216,11 +1403,48 @@ class MainWindow(ChromeWindow):
         self.stats_timer.stop()
         document = self.editor.document()
         if document.statistics_revision != document.revision:
-            text = self.editor.source_text()
-            document.statistics = (sum(1 for _ in re.finditer(r'[\u4e00-\u9fff]|[A-Za-z0-9_]+', text)), len(text))
-            document.statistics_revision = document.revision
+            if self.editor.length() > MAX_PREVIEW_HIGHLIGHT_BYTES:
+                key = (document, document.revision)
+                if self._stats_work is None or self._stats_work['key'] != key:
+                    self._pending_stats = dict(key=key, source=self.editor.source_text(),
+                                               done=Event(), statistics=None)
+                    if self._stats_work is None:
+                        self._start_statistics_work()
+            else:
+                text = self.editor.source_text()
+                document.statistics = (sum(1 for _ in re.finditer(r'[\u4e00-\u9fff]|[A-Za-z0-9_]+', text)), len(text))
+                document.statistics_revision = document.revision
         self._stats_count, self._stats_char_count = document.statistics
         self.update_status()
+
+    def _start_statistics_work(self):
+        self._stats_work, self._pending_stats = self._pending_stats, None
+        self.stats_work_timer.start()
+        Thread(target=self._count_statistics, args=(self._stats_work,), daemon=True).start()
+
+    @staticmethod
+    def _count_statistics(work):
+        try:
+            text = work['source']
+            work['statistics'] = (sum(1 for _ in re.finditer(r'[\u4e00-\u9fff]|[A-Za-z0-9_]+', text)), len(text))
+        finally:
+            work['done'].set()
+
+    def _poll_statistics_work(self):
+        work = self._stats_work
+        if work is None or not work['done'].is_set():
+            return
+        self.stats_work_timer.stop()
+        self._stats_work = None
+        document, revision = work['key']
+        if document.revision == revision and work['statistics'] is not None:
+            document.statistics = work['statistics']
+            document.statistics_revision = revision
+            if document is self.editor.document():
+                self._stats_count, self._stats_char_count = document.statistics
+                self.update_status()
+        if self._pending_stats is not None:
+            self._start_statistics_work()
 
     def update_title(self, *_):
         self.rename_action.setEnabled(self.current_session is not None)
@@ -1250,11 +1474,48 @@ class MainWindow(ChromeWindow):
         self.outline.clear()
         if self.new_document_format != 'md':
             return
-        for line, level, title in markdown_headings(self.editor.source_text()):
+        source = self.editor.source_text()
+        if self.editor.length() > 16 * 1024:
+            self._pending_outline = dict(key=key, source=source, headings=None, done=Event())
+            if self._outline_work is None:
+                self._start_outline_work()
+            return
+        self._pending_outline = None
+        self._show_headings(markdown_headings(source))
+
+    def _show_headings(self, headings):
+        for line, level, title in headings:
             item = QListWidgetItem('  ' * (level - 1) + title)
             item.setData(Qt.UserRole, line)
             item.setToolTip(title)
             self.outline.addItem(item)
+
+    def _start_outline_work(self):
+        self._outline_work, self._pending_outline = self._pending_outline, None
+        self.outline_work_timer.start()
+        Thread(target=self._parse_outline_work, args=(self._outline_work,), daemon=True).start()
+
+    @staticmethod
+    def _parse_outline_work(work):
+        try:
+            work['headings'] = markdown_headings(work['source'])
+        except Exception:
+            logging.getLogger(__name__).exception('Outline parsing failed')
+        finally:
+            work['done'].set()
+
+    def _poll_outline_work(self):
+        work = self._outline_work
+        if work is None or not work['done'].is_set():
+            return
+        self.outline_work_timer.stop()
+        self._outline_work = None
+        key = (self.editor.document(), self.editor.document().revision, self.new_document_format)
+        if work['key'] == key and work['headings'] is not None:
+            self.outline.clear()
+            self._show_headings(work['headings'])
+        if self._pending_outline is not None:
+            self._start_outline_work()
 
     def jump_heading(self, item):
         if item is None:
@@ -1396,7 +1657,7 @@ class MainWindow(ChromeWindow):
         if kind == 'diagram':
             self._attach_diagram(session, diagram_model)
             if diagram_model['warnings']:
-                QMessageBox.warning(self, '????? ? ?????', '\n'.join(diagram_model['warnings']) + '\n???????????????????????????????????')
+                QMessageBox.warning(self, '图形导入提示', '\n'.join(diagram_model['warnings']) + '\n部分内容无法完整保留。为保护原文件，请另存为新文件。')
         self.document_tabs.blockSignals(True)
         self.document_tabs.setCurrentIndex(index)
         self.document_tabs.blockSignals(False)
@@ -1720,7 +1981,7 @@ class MainWindow(ChromeWindow):
         if self.editor.selectionIsRectangle() or self.editor.selections() > 1:
             self.statusBar().showMessage('Markdown 格式操作需要普通文本选区', 3000)
             return
-        self.set_mode('split' if self.mode == 'preview' else self.mode, remember=False)
+        self.set_mode('source' if self.mode == 'preview' else self.mode, remember=False)
         text = self.editor.selected_text() or default
         self.editor.beginUndoAction()
         self.editor.replace_selection(prefix + text + suffix)
@@ -1890,7 +2151,14 @@ class MainWindow(ChromeWindow):
         self.settings.sync()
         self.timer.stop()
         self.stats_timer.stop()
+        self.stats_work_timer.stop()
+        self._pending_stats = None
         self.outline_timer.stop()
+        self.outline_work_timer.stop()
+        self._pending_outline = None
+        self.selection_sync.work_timer.stop()
+        self.selection_sync.preview_timer.stop()
+        self.selection_sync.timer.stop()
         self.preview_work_timer.stop()
         self._pending_preview = None
         self._preview_generation += 1

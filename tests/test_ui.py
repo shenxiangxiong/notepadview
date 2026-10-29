@@ -116,15 +116,15 @@ def test_theme_is_persisted(window):
 
 
 @pytest.mark.parametrize('mode', ['source', 'split', 'preview'])
-def test_view_actions_switch_immediately_and_persist(window, tmp_path, mode):
+def test_view_actions_switch_immediately_without_persisting(window, tmp_path, mode):
     from PySide6.QtCore import QSettings
-    assert window.mode == 'split'
-    assert window.default_view == 'split'
-    assert window.view_actions['split'].isChecked()
+    assert window.mode == 'source'
+    assert window.default_view == 'source'
+    assert window.view_actions['source'].isChecked()
     assert window.view_actions[mode] in window.settings_menu.actions()
     window.view_actions[mode].trigger()
-    assert window.settings.value('default_view') == mode
-    assert window.default_view == mode
+    assert window.settings.value('default_view') is None
+    assert window.default_view == 'source'
     assert window.mode == mode
     assert window.source_panel.isVisible() == (mode != 'preview')
     assert window.preview_panel.isVisible() == (mode != 'source')
@@ -134,25 +134,54 @@ def test_view_actions_switch_immediately_and_persist(window, tmp_path, mode):
     settings = QSettings(str(tmp_path / 'settings.ini'), QSettings.IniFormat)
     reopened = type(window)(settings=settings)
     try:
-        assert reopened.mode == mode
-        assert reopened.default_view == mode
-        assert all(action.isChecked() == (key == mode)
+        assert reopened.mode == 'source'
+        assert reopened.default_view == 'source'
+        assert all(action.isChecked() == (key == 'source')
                    for key, action in reopened.view_actions.items())
     finally:
         reopened.editor.document().setModified(False)
         reopened.close()
 
 
-def test_invalid_default_view_falls_back_to_split(window):
+@pytest.mark.parametrize('saved_mode', ['unknown', 'split', 'preview'])
+def test_saved_view_is_ignored_on_startup(window, saved_mode):
     from PySide6.QtCore import QSettings
     settings = QSettings(str(window.settings.fileName() + '.invalid'), QSettings.IniFormat)
-    settings.setValue('default_view', 'unknown')
+    settings.setValue('default_view', saved_mode)
     reopened = type(window)(settings=settings)
-    assert reopened.mode == 'split'
-    assert reopened.default_view == 'split'
-    assert reopened.view_actions['split'].isChecked()
+    assert reopened.mode == 'source'
+    assert reopened.default_view == 'source'
+    assert reopened.view_actions['source'].isChecked()
     reopened.editor.document().setModified(False)
     reopened.close()
+
+
+def test_formatting_from_preview_returns_to_source(window):
+    window.new_document('md')
+    window.set_mode('preview')
+    window.wrap_selection('**', '**', 'word')
+    assert window.mode == 'source'
+    assert window.source_panel.isVisible()
+    assert not window.preview_panel.isVisible()
+    assert window.editor.toPlainText() == '**word**'
+
+
+def test_switching_text_tabs_always_returns_to_source(window):
+    window.new_document('txt')
+    first = window.current_session
+    window.set_mode('split')
+    window.new_document('python')
+    second = window.current_session
+    assert window.mode == 'source'
+    window.set_mode('preview')
+    window.activate_document(window._session_tab_index(first))
+    assert window.mode == 'source'
+    window.set_mode('split')
+    window.activate_document(window._session_tab_index(second))
+    assert window.mode == 'source'
+    snapshot = window.workspace.snapshot()
+    assert all('view_mode' not in item and 'last_single_view' not in item
+               for item in snapshot['documents'])
 
 
 def test_find_replace_and_undo(window):

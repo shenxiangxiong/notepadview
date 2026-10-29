@@ -2,6 +2,10 @@ import os
 from pathlib import Path
 import tempfile
 import locale
+import re
+
+
+_UNSAFE_TEXT = re.compile(r'[\x00-\x08\x0b\x0e-\x1f\x7f-\x9f\ufffd]')
 
 
 ENCODING_LABELS = {
@@ -70,8 +74,7 @@ def load_text_document(path: Path, encoding: str | None = None) -> tuple[str, st
             if forced:
                 raise
             continue
-        if any((ord(char) < 32 and char not in '\t\n\r\f') or
-               0x7f <= ord(char) < 0xa0 or char == '\ufffd' for char in text):
+        if _UNSAFE_TEXT.search(text):
             continue
         # 只有严格往返一致的编码才允许编辑，未知二进制仅提示不支持。
         if not forced and text.encode(codec) != data:

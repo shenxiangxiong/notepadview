@@ -48,7 +48,7 @@ def large_text_preview(source):
     for start in range(0, len(lines), 200):
         text = ''.join(lines[start:start + 200])
         estimated_height = max(1, len(lines[start:start + 200])) * 26
-        chunks.append(f'<pre class="preview-chunk" style="contain-intrinsic-size:auto {estimated_height}px">'
+        chunks.append(f'<pre data-source-line="{start}" data-source-text="true" class="preview-chunk" style="contain-intrinsic-size:auto {estimated_height}px">'
                       '<code>' + escape(text) + '</code></pre>')
     return '<div class="large-preview">' + ''.join(chunks) + '</div>'
 
@@ -58,8 +58,22 @@ def parse_markdown(source, highlight_code=None):
     parser.enable('table').enable('strikethrough').use(tasklists_plugin)
     tokens = parser.parse(source)
     for token in tokens:
+        if token.map and token.nesting != -1:
+            token.attrSet('data-source-line', str(token.map[0]))
+            token.attrSet('data-source-end', str(token.map[1]))
         if token.type == 'heading_open' and token.map:
             token.attrSet('id', f'heading-{token.map[0]}')
+    for name in ('fence', 'code_block'):
+        original = parser.renderer.rules[name]
+
+        def mapped_code(tokens, index, options, env, render=original):
+            html = render(tokens, index, options, env)
+            token = tokens[index]
+            if token.map:
+                html = html.replace('<pre', '<pre' + parser.renderer.renderAttrs(token), 1)
+            return html
+
+        parser.renderer.rules[name] = mapped_code
     return parser, tokens
 
 
@@ -86,12 +100,27 @@ def render_code_preview(source: str, language: str, theme: str = 'light') -> str
     else:
         try:
             from notepadview.text_types import lexer_for
-            lexer = lexer_for(language)
+            lexer = lexer_for(language, stripnl=False, ensurenl=False)
             body = highlight(source, lexer, formatter)
+            if not source.endswith(('\n', '\r')) and body.endswith('\n'):
+                body = body[:-1]
         except ClassNotFound:
             body = escape(source)
-    content = body if large else '<pre class="highlight"><code>' + body + '</code></pre>'
-    return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+    if large:
+        content = body
+    else:
+        lines = body.splitlines(keepends=True)
+        from zlib import crc32
+        blocks = []
+        start = 0
+        # Content-defined boundaries keep later blocks stable when lines are inserted or deleted.
+        for end, line in enumerate(lines, 1):
+            if end - start >= 100 or crc32(line.encode('utf-8')) % 32 == 0 or end == len(lines):
+                blocks.append(f'<pre data-source-line="{start}" data-source-text="true" class="highlight"><code>'
+                              + ''.join(lines[start:end]) + '</code></pre>')
+                start = end
+        content = ''.join(blocks) if blocks else '<pre data-source-line="0" data-source-text="true" class="highlight"><code></code></pre>'
+    return f'''<!doctype html><html lang="zh-CN" data-code-preview="{escape(language, quote=True)}:{escape(theme, quote=True)}"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
 <style>html {{ background:{bg}; color:{fg}; }} body {{ margin:0; padding:16px 20px 40px; }}
 pre {{ margin:0; white-space:pre-wrap; overflow-wrap:anywhere; border:0; padding:0; background:transparent; }}
@@ -109,7 +138,7 @@ def render_plain_text(source: str, theme: str = 'light') -> str:
     colors = preview_colors(theme)
     bg, fg, border = (colors[key] for key in ('bg', 'fg', 'border'))
     content = (large_text_preview(source) if len(source.encode('utf-8')) > MAX_PREVIEW_HIGHLIGHT_BYTES
-               else '<pre>' + escape(source) + '</pre>')
+               else '<pre data-source-line="0" data-source-text="true">' + escape(source) + '</pre>')
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';">
 <meta name="viewport" content="width=device-width, initial-scale=1">

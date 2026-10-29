@@ -115,7 +115,8 @@ def _read_xml(archive, members, name):
     if info is None or info.is_dir():
         raise EbookReadError(f'EPUB 缺少必要文件：{name}')
     payload = archive.read(info)
-    lowered = payload.lower()
+    # HTML5's plain doctype declares no entities or external resources.
+    lowered = re.sub(br'<!DOCTYPE\s+html\s*>', b'', payload, flags=re.IGNORECASE).lower()
     if b'<!doctype' in lowered or b'<!entity' in lowered:
         raise EbookReadError('EPUB XML 不允许 DTD 或实体声明。')
     try:

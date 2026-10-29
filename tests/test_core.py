@@ -16,8 +16,8 @@ def test_read_bom_and_windows_newlines(tmp_path):
 def test_markdown_tables_tasks_code_and_relative_image():
     from notepadview.rendering import render_html
     html = render_html('# Title\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- [x] done\n\n```python\nprint(1)\n```\n\n![sample](images/demo.png)', 'light')
-    assert '<h1 id="heading-0">Title</h1>' in html
-    assert '<table>' in html
+    assert 'id="heading-0">Title</h1>' in html
+    assert '<table ' in html
     assert 'type="checkbox"' in html
     assert 'highlight' in html
     assert html.count('<pre') == 1
@@ -36,9 +36,9 @@ def test_markdown_heading_anchors_follow_source_lines():
     from notepadview.rendering import render_html
     source = '# Same\n\n~~~md\n# Not a heading\n~~~\n\nSame\n----\n\n  ## **中文**\n'
     html = render_html(source)
-    assert '<h1 id="heading-0">Same</h1>' in html
-    assert '<h2 id="heading-6">Same</h2>' in html
-    assert '<h2 id="heading-9"><strong>中文</strong></h2>' in html
+    assert 'id="heading-0">Same</h1>' in html
+    assert 'id="heading-6">Same</h2>' in html
+    assert 'id="heading-9"><strong>中文</strong></h2>' in html
     assert 'id="heading-3"' not in html
 
 
@@ -94,12 +94,27 @@ def test_plain_text_rendering_is_literal_and_safe():
     assert '<pre' in html and 'white-space:pre-wrap' in html
     assert '# literal\n**not bold**\n&lt;script&gt;alert(1)&lt;/script&gt;' in html
     assert '<script>' not in html
+def test_code_preview_chunks_preserve_source_lines():
+    from html import unescape
+    import re
+    from notepadview.rendering import render_code_preview
+    source = '\n\n' + 'value = "sample"\n' * 1000 + '\n\n'
+    html = render_code_preview(source, 'python')
+    blocks = [(int(line), unescape(re.sub('<[^>]+>', '', text))) for line, text in
+              re.findall(r'<pre data-source-line="(\d+)"[^>]*><code>(.*?)</code></pre>', html, re.S)]
+    assert len(blocks) > 1
+    assert max(len(text.splitlines()) for _, text in blocks) <= 100
+    assert ''.join(text for _, text in blocks) == source
+    for line, text in blocks:
+        assert text == ''.join(source.splitlines(keepends=True)[line:line + len(text.splitlines())])
+
+
 def test_code_preview_is_highlighted_and_inert():
     from notepadview.rendering import render_code_preview
     result = render_code_preview('<script>alert(1)</script>', 'xml')
     assert '<script>' not in result
     assert '&lt;' in result and 'script' in result
     assert 'Content-Security-Policy' in result and '<span' in result
-    assert '<pre class="highlight">' in result
+    assert 'class="highlight"><code>' in result
 
 

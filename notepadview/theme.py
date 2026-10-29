@@ -221,6 +221,7 @@ QPushButton#primaryButton {{ background:{accent}; color:{bg}; border-color:{acce
 QPushButton#primaryButton:hover {{ background:{fg}; border-color:{fg}; }}
 QDialogButtonBox QPushButton,QMessageBox QPushButton {{ min-width:68px; }}
 QWidget#findBar {{ background:{pane}; border:1px solid {border}; border-radius:6px; }}
+QWidget#findBar QWidget#findResizeHandle {{ background:transparent; border:0; }}
 QWidget#findBar QLabel {{ background:transparent; border:none; }}
 QWidget#findBar QLineEdit {{ background:{bg}; padding:0 6px; min-height:30px; max-height:30px; border-radius:4px; }}
 QWidget#findBar QToolButton {{ background:transparent; border:none; padding:0; min-width:28px; max-width:28px; min-height:28px; max-height:28px; }}
