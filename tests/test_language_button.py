@@ -46,6 +46,9 @@ def test_language_change_updates_named_draft(window):
     assert window.language_button.menu().actions() == list(window.type_actions.values())
 
 
-def test_language_button_disabled_for_diagram(window):
-    window.new_diagram('mindmap')
+def test_language_button_disabled_for_diagram(window, tmp_path):
+    from notepadview.diagrams import new_diagram, write_diagram
+    path = tmp_path / 'map.nvdiagram'
+    write_diagram(path, new_diagram('mindmap'))
+    assert window.open_document_path(path)
     assert not window.language_button.isEnabled()

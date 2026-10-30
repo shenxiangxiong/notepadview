@@ -248,29 +248,7 @@ class MainWindow(ChromeWindow):
         canvas = DiagramEditor(model, self)
         session.diagram = canvas
         self.document_area.addWidget(canvas)
-        if modified:
-            canvas.undo_stack.resetClean()
-        def changed():
-            session.document.setModified(not canvas.undo_stack.isClean())
-            if self.current_session is session:
-                self.undo_action.setEnabled(canvas.undo_stack.canUndo())
-                self.redo_action.setEnabled(canvas.undo_stack.canRedo())
-            self.update_title()
-            self.schedule_workspace_save()
-        canvas.changed.connect(changed)
-        session.document.setModified(modified)
-
-    def new_diagram(self, kind='flowchart'):
-        from notepadview.diagrams import new_diagram
-        self.new_document('txt')
-        session = self.current_session
-        session.kind = 'diagram'
-        session.display_name = '未命名.nvdiagram'
-        self._attach_diagram(session, new_diagram(kind), modified=True)
-        self.update_document_mode()
-        self.update_title()
-        self.schedule_workspace_save()
-        return True
+        session.document.setModified(False)
 
     def _attach_image(self, session, editor):
         self._release_image(session)
@@ -296,20 +274,20 @@ class MainWindow(ChromeWindow):
             session.image_editor = None
 
     def undo_current(self):
-        if self.current_session and self.current_session.kind in ('docx', 'xlsx'):
+        if self.current_session and self.current_session.kind in ('docx', 'xlsx', 'diagram'):
             return
         if self.current_session and self.current_session.image_editor is not None:
             self.current_session.image_editor.undo_stack.undo()
         else:
-            (self.current_session.diagram.undo_stack if self.is_diagram else self.editor).undo()
+            self.editor.undo()
 
     def redo_current(self):
-        if self.current_session and self.current_session.kind in ('docx', 'xlsx'):
+        if self.current_session and self.current_session.kind in ('docx', 'xlsx', 'diagram'):
             return
         if self.current_session and self.current_session.image_editor is not None:
             self.current_session.image_editor.undo_stack.redo()
         else:
-            (self.current_session.diagram.undo_stack if self.is_diagram else self.editor).redo()
+            self.editor.redo()
 
     def edit_current(self, action):
         session = self.current_session
@@ -412,6 +390,14 @@ class MainWindow(ChromeWindow):
         self.view_actions[mode].setChecked(True)
         if mode in ('source', 'preview'):
             self.last_single_view = mode
+
+    def open_default_apps(self):
+        url = QUrl('ms-settings:defaultapps?registeredAppUser=NotepadView')
+        if not QDesktopServices.openUrl(url):
+            QMessageBox.information(
+                self, '默认打开程序',
+                '无法打开系统设置。请在 Windows 设置 → 应用 → 默认应用中选择 Notepad View，'
+                '或右键文件 → 打开方式 → 选择其他应用，并勾选始终使用。')
 
     def show_help(self):
         from notepadview.help import HelpDialog
@@ -915,14 +901,9 @@ class MainWindow(ChromeWindow):
                         self._load_session_preview(session)
                     raise
                 if session.kind == 'diagram':
-                    models = [session.diagram.model]
-                    for command_index in range(session.diagram.undo_stack.count()):
-                        command = session.diagram.undo_stack.command(command_index)
-                        models.extend([command.before, command.after])
-                    for model in models:
-                        paths = model.get('protected_paths', [])
-                        if any(Path(p).resolve() == source.resolve() for p in paths) and str(target.resolve()) not in paths:
-                            paths.append(str(target.resolve()))
+                    paths = session.diagram.model.get('protected_paths', [])
+                    if any(Path(p).resolve() == source.resolve() for p in paths) and str(target.resolve()) not in paths:
+                        paths.append(str(target.resolve()))
                 session.path = target
                 if session is self.current_session:
                     self.path = target
@@ -1662,7 +1643,7 @@ class MainWindow(ChromeWindow):
         if kind == 'diagram':
             self._attach_diagram(session, diagram_model)
             if diagram_model['warnings']:
-                QMessageBox.warning(self, '图形导入提示', '\n'.join(diagram_model['warnings']) + '\n部分内容无法完整保留。为保护原文件，请另存为新文件。')
+                QMessageBox.warning(self, '图形查看提示', '\n'.join(diagram_model['warnings']) + '\n部分内容可能无法完整显示，当前仅供只读查看。')
         self.document_tabs.blockSignals(True)
         self.document_tabs.setCurrentIndex(index)
         self.document_tabs.blockSignals(False)
@@ -1681,10 +1662,8 @@ class MainWindow(ChromeWindow):
             return False
         if target.image_editor is not None:
             return self._save_image_to(path, target)
-        if target.kind not in ('text', 'diagram'):
+        if target.kind != 'text':
             return False
-        if target.kind == 'diagram':
-            return self._save_diagram_to(path, session=target)
         destination = Path(path).resolve()
         if any(item is not target and item.path == destination for item in self.sessions):
             QMessageBox.warning(self, '文件已打开', '目标文件已在其他页签中打开，请切换到该页签保存，或选择其他文件名。')
@@ -1732,33 +1711,6 @@ class MainWindow(ChromeWindow):
         self.statusBar().showMessage('文档已保存' if target.kind in ('docx', 'xlsx') else '图片已保存', 2500)
         return True
 
-    def _save_diagram_to(self, path, *, session=None):
-        from notepadview.diagrams import write_diagram
-        target = self.current_session if session is None else session
-        destination = Path(path).resolve()
-        if any(s is not target and s.path == destination for s in self.sessions):
-            QMessageBox.warning(self, '文件已打开', '目标文件已在其他页签中打开，请选择其他文件名。')
-            return False
-        model = target.diagram.model
-        if model.get('warnings') and destination != target.path:
-            answer = QMessageBox.question(self, '保存图表', '此图表包含兼容性提示，是否另存为？', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-            if answer != QMessageBox.Yes:
-                return False
-        try:
-            write_diagram(destination, model)
-        except (OSError, ValueError, RecursionError) as error:
-            QMessageBox.warning(self, '保存失败', str(error))
-            return False
-        target.path = destination
-        if target is self.current_session:
-            self.path = destination
-        target.diagram.undo_stack.setClean()
-        target.document.setModified(False)
-        self.add_recent(destination)
-        self.update_title()
-        self.schedule_workspace_save()
-        return True
-
     def run_script(self):
         session = self.current_session
         if session is None or session.kind != 'text' or session.document_format not in ('python', 'powershell'):
@@ -1776,9 +1728,6 @@ class MainWindow(ChromeWindow):
     def save_document(self):
         if self.current_session and self.current_session.image_editor is not None:
             return self.save_to(self.path) if self.path else self.save_as()
-        if self.is_diagram:
-            protected = self.current_session.diagram.model.get('protected_paths', [])
-            return self.save_as() if not self.path or any(self.path.resolve() == Path(p).resolve() for p in protected) else self.save_to(self.path)
         if self.is_readonly_preview:
             return False
         return self.save_to(self.path) if self.path else self.save_as()
@@ -1798,15 +1747,8 @@ class MainWindow(ChromeWindow):
                 path += '.svg' if target.image_editor.image_format == 'svg' else '.jpg' if 'JPEG' in selected else '.png'
             return self.save_to(path, session=target)
         if target is not None and (not any(item is target for item in self.sessions)
-                                   or target.kind not in ('text', 'diagram')):
+                                   or target.kind != 'text'):
             return False
-        if target is not None and target.kind == 'diagram':
-            path, selected = QFileDialog.getSaveFileName(self, '另存为图表', str(target.path or Path.home() / '未命名.nvdiagram'), '图表 (*.nvdiagram);;draw.io (*.drawio);;XMind (*.xmind)', options=QFileDialog.DontUseNativeDialog)
-            if not path:
-                return False
-            if not Path(path).suffix:
-                path += '.xmind' if 'xmind' in selected else '.drawio' if 'drawio' in selected else '.nvdiagram'
-            return self.save_to(path, session=target)
         suffix = target.document_format if target is not None else self.new_document_format
         name = target.name if target is not None else f'未命名.{suffix}'
         path, selected_filter = QFileDialog.getSaveFileName(self, '保存文档', str(target.path if target is not None and target.path else Path.home() / name),
@@ -1850,11 +1792,6 @@ class MainWindow(ChromeWindow):
         for action in (self.save_action, self.save_as_action, self.export_action, self.find_action,
                        *self.view_actions.values()):
             action.setEnabled(not readonly)
-        if self.is_diagram:
-            self.save_action.setEnabled(True)
-            self.save_as_action.setEnabled(True)
-            self.undo_action.setEnabled(self.current_session.diagram.undo_stack.canUndo())
-            self.redo_action.setEnabled(self.current_session.diagram.undo_stack.canRedo())
         if image is not None and self.current_session.kind in ('docx', 'xlsx'):
             self.save_action.setEnabled(False)
             self.save_as_action.setEnabled(False)
@@ -1865,7 +1802,7 @@ class MainWindow(ChromeWindow):
             self.save_as_action.setEnabled(True)
             self.undo_action.setEnabled(image.undo_stack.canUndo())
             self.redo_action.setEnabled(image.undo_stack.canRedo())
-        elif readonly and not self.is_diagram:
+        elif readonly:
             self.undo_action.setEnabled(False)
             self.redo_action.setEnabled(False)
         self.split_button.setEnabled(not readonly)

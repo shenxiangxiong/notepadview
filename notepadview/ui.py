@@ -107,8 +107,6 @@ def build_actions(w):
     menu.addAction(w.new_plain_text_action)
     menu.addSeparator()
     menu.addAction(w.export_action)
-    menu.addAction(a('新建思维导图', lambda: w.new_diagram('mindmap')))
-    menu.addAction(a('新建流程图', lambda: w.new_diagram('flowchart')))
     w.recent_menu = menu.addMenu('最近打开')
     menu.addSeparator()
     menu.addAction(a('退出', w.close, 'Alt+F4'))
@@ -165,6 +163,11 @@ def build_actions(w):
         positions.addAction(action)
         w.sidebar_position_menu.addAction(action)
         w.sidebar_position_actions[key] = action
+    import sys
+    if sys.platform == 'win32':
+        w.settings_menu.addSeparator()
+        w.default_apps_action = a('默认打开程序…', w.open_default_apps)
+        w.settings_menu.addAction(w.default_apps_action)
     w.theme_menu = QMenu('主题', w)
     w.theme_actions = {}
     themes = QActionGroup(w)

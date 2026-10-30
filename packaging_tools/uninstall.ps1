@@ -33,9 +33,17 @@ function Remove-EmptyAssociationKey([Microsoft.Win32.RegistryKey]$Classes, [stri
     if ($empty) { $Classes.DeleteSubKey($Path, $false) }
 }
 
-function Remove-FileAssociations([string]$InstallRoot, [Microsoft.Win32.RegistryKey]$Classes) {
+function Remove-FileAssociations([string]$InstallRoot, [Microsoft.Win32.RegistryKey]$Classes,
+                                 [Microsoft.Win32.RegistryKey]$RegisteredApplications) {
     $command = '"' + (Join-Path $InstallRoot 'NotepadView.exe') + '" "%1"'
+    $icon = (Join-Path $InstallRoot 'NotepadView.exe') + ',0'
+    $capabilities = 'NotepadView.Capabilities'
     $extensions = @('.md', '.markdown', '.txt', '.json', '.xml', '.sql')
+    $fileAssociations = $Classes.OpenSubKey($capabilities + '\FileAssociations')
+    if ($null -ne $fileAssociations) {
+        try { $extensions = @($extensions + $fileAssociations.GetValueNames() | Select-Object -Unique) }
+        finally { $fileAssociations.Dispose() }
+    }
     $application = 'Applications\NotepadView.exe'
     $progId = 'NotepadView.Document'
     $changed = $false
@@ -44,12 +52,34 @@ function Remove-FileAssociations([string]$InstallRoot, [Microsoft.Win32.Registry
         if ($actual -isnot [string] -or
             -not [string]::Equals($actual, $command, [StringComparison]::OrdinalIgnoreCase)) { continue }
         if ($path -eq $application) {
-            foreach ($extension in $extensions) {
+            foreach ($extension in @('.md', '.markdown', '.txt', '.json', '.xml', '.sql')) {
                 if (Remove-AssociationValue $Classes ($path + '\SupportedTypes') $extension '') { $changed = $true }
             }
             if (Remove-AssociationValue $Classes $path 'FriendlyAppName' 'Notepad View') { $changed = $true }
             Remove-EmptyAssociationKey $Classes ($path + '\SupportedTypes')
         } else {
+            $ownedCapabilities = Get-AssociationValue $Classes $capabilities 'ApplicationIcon'
+            if ([string]::Equals($ownedCapabilities, $icon, [StringComparison]::OrdinalIgnoreCase)) {
+                foreach ($extension in $extensions) {
+                    if (Remove-AssociationValue $Classes ($capabilities + '\FileAssociations') $extension $progId) {
+                        $changed = $true
+                    }
+                }
+                foreach ($entry in @(@('ApplicationName', 'Notepad View'),
+                                      @('ApplicationDescription', '使用 Notepad View 打开文本、代码和文档'),
+                                      @('ApplicationIcon', $icon))) {
+                    if (Remove-AssociationValue $Classes $capabilities $entry[0] $entry[1]) { $changed = $true }
+                }
+                if ($null -ne $RegisteredApplications) {
+                    if (Remove-AssociationValue $RegisteredApplications '' 'NotepadView' ('Software\Classes\' + $capabilities)) {
+                        $changed = $true
+                    }
+                }
+                Remove-EmptyAssociationKey $Classes ($capabilities + '\FileAssociations')
+                Remove-EmptyAssociationKey $Classes $capabilities
+            }
+            if (Remove-AssociationValue $Classes ($path + '\DefaultIcon') '' $icon) { $changed = $true }
+            Remove-EmptyAssociationKey $Classes ($path + '\DefaultIcon')
             foreach ($extension in $extensions) {
                 $openWith = $extension + '\OpenWithProgids'
                 if (Remove-AssociationValue $Classes $openWith $progId '') { $changed = $true }
@@ -206,8 +236,13 @@ try {
     if (-not $NoRegister) {
         $classes = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\Classes', $true)
         if ($null -ne $classes) {
-            try { $associationsChanged = Remove-FileAssociations -InstallRoot $installRoot -Classes $classes }
-            finally { $classes.Dispose() }
+            $registered = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Software\RegisteredApplications', $true)
+            try {
+                $associationsChanged = Remove-FileAssociations -InstallRoot $installRoot -Classes $classes -RegisteredApplications $registered
+            } finally {
+                if ($null -ne $registered) { $registered.Dispose() }
+                $classes.Dispose()
+            }
             if ($associationsChanged) { Send-AssociationChangeNotification }
         }
         $shell = New-Object -ComObject WScript.Shell

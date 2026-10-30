@@ -190,7 +190,7 @@ class FileTree(QTreeWidget):
             targets = self.selected_sessions() if item.isSelected() else [session]
             menu.addAction('重命名…', lambda: self.owner.request_rename_document(session))
             save_as = menu.addAction('另存为…', lambda: self.owner.save_as(session=session))
-            save_as.setEnabled(session.kind in ('text', 'diagram') or session.kind == 'image' and session.image_editor is not None)
+            save_as.setEnabled(session.kind == 'text' or session.kind == 'image' and session.image_editor is not None)
             folder = menu.addAction('打开所在文件夹', lambda: self.owner.open_document_folder(session))
             folder.setEnabled(session.path is not None)
             menu.addAction('移除', lambda: self.owner.remove_sessions(targets))

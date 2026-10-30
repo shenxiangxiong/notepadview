@@ -19,6 +19,27 @@ def test_help_menu_opens_readme_without_changing_document(window):
     dialog.close()
 
 
+def test_settings_opens_windows_default_apps(window, monkeypatch):
+    from PySide6.QtGui import QDesktopServices
+    opened = []
+    monkeypatch.setattr(QDesktopServices, 'openUrl', lambda url: opened.append(url.toString()) or True)
+    action = next(action for action in window.settings_menu.actions()
+                  if action.text() == '默认打开程序…')
+    action.trigger()
+    assert opened == ['ms-settings:defaultapps?registeredAppUser=NotepadView']
+
+
+def test_default_apps_launch_failure_shows_manual_steps(window, monkeypatch):
+    from PySide6.QtGui import QDesktopServices
+    from PySide6.QtWidgets import QMessageBox
+    messages = []
+    monkeypatch.setattr(QDesktopServices, 'openUrl', lambda url: False)
+    monkeypatch.setattr(QMessageBox, 'information', lambda parent, title, text: messages.append(text))
+    window.open_default_apps()
+    assert '默认应用' in messages[0]
+    assert '始终使用' in messages[0]
+
+
 def test_help_finds_packaged_readme(tmp_path):
     from notepadview.help import find_readme
     executable = tmp_path / 'NotepadView.exe'

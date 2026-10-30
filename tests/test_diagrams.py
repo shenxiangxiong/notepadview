@@ -71,40 +71,36 @@ def test_unsafe_xml_and_zip_rejected(tmp_path):
         d.write_diagram(path, model)
 
 
-def test_canvas_undo_dirty_layout_delete_export(app, tmp_path):
+def test_canvas_only_exposes_viewing_controls(app):
+    from PySide6.QtWidgets import QPushButton
     d = api()
-    editor = d.DiagramEditor(d.new_diagram('mindmap'))
-    root = editor.model['pages'][0]['nodes'][0]['id']
-    child = editor.add_node(parent_id=root)
-    assert len(editor.model['pages'][0]['edges']) == 1
-    assert not editor.undo_stack.isClean()
-    editor.set_node_text(child, '子主题')
-    editor.move_node(child, 400, 200)
-    editor.undo_stack.undo()
-    assert editor.node(child)['x'] != 400
-    editor.undo_stack.redo()
-    assert editor.node(child)['x'] == 400
-    editor.auto_layout()
-    editor.delete_ids({root})
-    assert not editor.model['pages'][0]['edges']
-    editor.undo_stack.undo()
-    assert len(editor.model['pages'][0]['nodes']) == 2
-    for suffix in ('.svg', '.png'):
-        path = tmp_path / ('export' + suffix)
-        editor.export_image(path)
-        assert path.stat().st_size > 100
-    while editor.undo_stack.canUndo():
-        editor.undo_stack.undo()
-    assert editor.undo_stack.isClean()
-    editor.close()
+    model = d.new_diagram('mindmap')
+    model['pages'].append(d.new_diagram('flowchart')['pages'][0])
+    editor = d.DiagramEditor(model)
+    try:
+        assert {button.text() for button in editor.findChildren(QPushButton)} == {'−', '＋', '适应'}
+        assert '只读' in editor.notice.text()
+        assert editor.pages.count() == 2
+        editor.pages.setCurrentIndex(1)
+        assert editor.page_index == 1
+        scale = editor.view.transform().m11()
+        editor.zoom(1.25)
+        assert editor.view.transform().m11() > scale
+        assert editor.model == model
+        for operation in ('add_node', 'set_node_text', 'delete_ids', 'export_image', 'auto_layout'):
+            assert not hasattr(editor, operation)
+    finally:
+        editor.close()
 
 
-def test_window_diagram_tabs_save_and_restore(window, tmp_path, monkeypatch):
+@pytest.mark.parametrize('kind,suffix', [('mindmap', '.xmind'), ('flowchart', '.drawio'), ('flowchart', '.nvdiagram')])
+def test_window_diagram_is_readonly_and_restores(window, tmp_path, monkeypatch, kind, suffix):
+    from PySide6.QtGui import QAction
+    from PySide6.QtWidgets import QFileDialog
     d = api()
-    monkeypatch.setattr(QMessageBox, 'warning', lambda *a: QMessageBox.Ok)
-    monkeypatch.setattr(QMessageBox, 'information', lambda *a: QMessageBox.Ok)
-    path = tmp_path / 'map.xmind'
-    d.write_diagram(path, d.new_diagram('mindmap'))
+    path = tmp_path / ('map' + suffix)
+    d.write_diagram(path, d.new_diagram(kind))
+    original = path.read_bytes()
     window.new_document('json')
     window.editor.setPlainText('{"keep":1}')
     text_session = window.current_session
@@ -112,30 +108,35 @@ def test_window_diagram_tabs_save_and_restore(window, tmp_path, monkeypatch):
     session = window.current_session
     assert session.kind == 'diagram'
     canvas = session.diagram
-    child = canvas.add_node(parent_id=canvas.model['pages'][0]['nodes'][0]['id'])
-    canvas.set_node_text(child, '新增')
-    assert session.document.isModified()
-    assert window.save_action.isEnabled()
-    assert window.save_document()
     assert not session.document.isModified()
-    canvas.undo_stack.undo()
-    assert session.document.isModified()
-    canvas.undo_stack.redo()
-    assert not session.document.isModified()
+    for action in (window.save_action, window.save_as_action, window.export_action,
+                   window.undo_action, window.redo_action):
+        assert not action.isEnabled()
+    assert not {'新建思维导图', '新建流程图'} & {action.text() for action in window.findChildren(QAction)}
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: pytest.fail('只读图表不应打开保存对话框'))
+    assert not window.save_document()
+    assert not window.save_as()
+    assert not window.save_to(path)
+    assert not window.save_to(tmp_path / 'copy.nvdiagram')
+    assert not window.export_to(tmp_path / 'export.html')
+    window.undo_current()
+    window.redo_current()
+    assert path.read_bytes() == original
+    assert not (tmp_path / 'copy.nvdiagram').exists()
     window.document_tabs.setCurrentIndex(window._session_tab_index(text_session))
     assert window.editor.source_text() == '{"keep":1}'
     window.document_tabs.setCurrentIndex(window._session_tab_index(session))
     assert session.diagram is canvas
-    assert window.rename_document_session(session, 'renamed')
-    canvas.set_node_text(child, '恢复未保存内容')
+    # 兼容旧版工作区中仍标记为已修改的图表缓存。
+    session.document.setModified(True)
     assert window.flush_workspace()
     restored = type(window)(settings=window.settings)
     try:
         assert restored.current_session.kind == 'diagram'
-        assert restored.current_session.diagram.node(child)['text'] == '恢复未保存内容'
-        assert restored.current_session.document.isModified()
-        assert restored.save_document()
-        assert d.read_diagram(restored.path)['pages'][0]['nodes'][1]['text'] == '恢复未保存内容'
+        assert restored.current_session.diagram.model == canvas.model
+        assert not restored.current_session.document.isModified()
+        assert not restored.save_document()
+        assert not restored.save_action.isEnabled()
     finally:
         for s in restored.sessions:
             s.document.setModified(False)

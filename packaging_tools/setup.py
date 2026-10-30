@@ -89,7 +89,7 @@ class SetupWindow(QWidget):
         header.addWidget(title)
         header.addStretch()
         layout.addLayout(header)
-        layout.addWidget(QLabel('通用文档编辑器  ·  版本 1.0.0'))
+        layout.addWidget(QLabel('通用文档编辑器  ·  版本 1.0.1'))
         layout.addSpacing(10)
         layout.addWidget(QLabel('安装位置'))
         row = QHBoxLayout()

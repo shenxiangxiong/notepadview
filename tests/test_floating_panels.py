@@ -98,19 +98,21 @@ def test_binary_context_save_as_is_disabled(window, kind):
 
 
 def test_inactive_diagram_save_as_preserves_current_text(window, tmp_path, monkeypatch):
-    from notepadview.diagrams import read_diagram
-    window.new_diagram('mindmap')
+    from notepadview.diagrams import new_diagram, write_diagram
+    path = tmp_path / 'original.nvdiagram'
+    write_diagram(path, new_diagram('mindmap'))
+    assert window.open_document_path(path)
     target = window.current_session
     canvas = target.diagram
-    node = canvas.model['pages'][0]['nodes'][0]['id']
-    canvas.set_node_text(node, '保留图表')
+    menu = window.file_list.build_context_menu(window.file_list.item_for_session(target))
+    assert not next(a for a in menu.actions() if a.text() == '另存为…').isEnabled()
     window.new_document('txt')
     window.editor.insertPlainText('当前文本')
     current = window.current_session
     destination = tmp_path / 'diagram.nvdiagram'
-    monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: (str(destination), ''))
-    assert window.save_as(session=target)
-    assert read_diagram(destination)['pages'][0]['nodes'][0]['text'] == '保留图表'
-    assert target.diagram is canvas and canvas.undo_stack.isClean()
+    monkeypatch.setattr(QFileDialog, 'getSaveFileName', lambda *a, **k: pytest.fail('只读图表不应另存'))
+    assert not window.save_as(session=target)
+    assert not destination.exists()
+    assert target.diagram is canvas and not target.document.isModified()
     assert window.current_session is current and window.editor.source_text() == '当前文本'
     assert current.document.isModified()

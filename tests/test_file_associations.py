@@ -28,8 +28,15 @@ class MemoryRegistry:
     @contextmanager
     def CreateKey(self, hive, path):
         assert hive == self.HKEY_CURRENT_USER
-        assert path.startswith(CLASSES + '\\')
+        assert path.startswith('Software\\')
         yield path
+
+    def DeleteKey(self, hive, path):
+        entries = [item for item in self.values if item[0] == path]
+        if not entries:
+            raise FileNotFoundError(path)
+        for item in entries:
+            del self.values[item]
 
     def SetValueEx(self, key, name, reserved, kind, value):
         assert reserved == 0
@@ -48,7 +55,8 @@ def associations():
 def registered_values(associations, target):
     registry = MemoryRegistry()
     associations.register_file_associations(target, registry)
-    return registry.values
+    return {item: value for item, value in registry.values.items()
+            if item[0].startswith(CLASSES + '\\')}
 
 
 def test_registers_current_user_open_with_candidates_without_changing_defaults(associations, tmp_path):
@@ -73,13 +81,28 @@ def test_registers_current_user_open_with_candidates_without_changing_defaults(a
         (CLASSES + '\\' + CONTEXT_MENU, 'Icon'): str(target.resolve() / 'NotepadView.exe') + ',0',
         (CLASSES + '\\' + CONTEXT_MENU + r'\command', ''): command,
     }
-    for extension in EXTENSIONS:
-        expected[CLASSES + '\\' + APPLICATION + r'\SupportedTypes', extension] = ''
+    expected.update({
+        (CLASSES + '\\' + PROGID + r'\DefaultIcon', ''): str(target.resolve() / 'NotepadView.exe') + ',0',
+        (CLASSES + r'\NotepadView.Capabilities', 'ApplicationName'): 'Notepad View',
+        (CLASSES + r'\NotepadView.Capabilities', 'ApplicationDescription'): '使用 Notepad View 打开文本、代码和文档',
+        (CLASSES + r'\NotepadView.Capabilities', 'ApplicationIcon'): str(target.resolve() / 'NotepadView.exe') + ',0',
+        (r'Software\RegisteredApplications', 'NotepadView'): CLASSES + r'\NotepadView.Capabilities',
+    })
+    for extension in associations.EXTENSIONS:
         expected[CLASSES + '\\' + extension + r'\OpenWithProgids', PROGID] = ''
+        expected[CLASSES + r'\NotepadView.Capabilities\FileAssociations', extension] = PROGID
     assert registry.values == defaults | expected
     assert set(registry.writes) == set(expected)
     associations.register_file_associations(target, registry)
     assert registry.values == defaults | expected
+
+
+def test_open_with_is_not_restricted_to_known_extensions(associations, tmp_path):
+    registry = MemoryRegistry()
+    registry.values[CLASSES + '\\' + APPLICATION + r'\SupportedTypes', '.txt'] = ''
+    associations.register_file_associations(tmp_path, registry)
+    assert not any(key.endswith(r'\SupportedTypes') for key, _ in registry.values)
+    assert {'.log', '.yaml', '.py', '.pdf', '.docx', '.epub', '.png'} <= set(associations.EXTENSIONS)
 
 
 def test_register_install_integrates_associations_and_hidden_shell_notification(tmp_path, monkeypatch):
@@ -95,6 +118,7 @@ def test_register_install_integrates_associations_and_hidden_shell_notification(
         yield path
 
     monkeypatch.setattr(winreg, 'CreateKey', create)
+    monkeypatch.setattr(winreg, 'DeleteKey', lambda hive, path: None)
     monkeypatch.setattr(winreg, 'SetValueEx', lambda key, name, reserved, kind, value:
                         values.__setitem__((key, name), value))
     monkeypatch.setattr(subprocess, 'run', lambda command, **kwargs: commands.append((command, kwargs)))
@@ -144,8 +168,18 @@ try {
         try { $key.SetValue($entry[1], $entry[2], [Microsoft.Win32.RegistryValueKind]::String) }
         finally { $key.Dispose() }
     }
-    $changed = Remove-FileAssociations -InstallRoot $env:NV_TARGET -Classes $root
-    $secondChange = Remove-FileAssociations -InstallRoot $env:NV_TARGET -Classes $root
+    $registered = $root.CreateSubKey('TestRegisteredApplications')
+    try {
+        $registered.SetValue('NotepadView', 'Software\Classes\NotepadView.Capabilities')
+        $registered.SetValue('OtherEditor', 'Software\OtherEditor\Capabilities')
+        $changed = Remove-FileAssociations -InstallRoot $env:NV_TARGET -Classes $root -RegisteredApplications $registered
+        $secondChange = Remove-FileAssociations -InstallRoot $env:NV_TARGET -Classes $root -RegisteredApplications $registered
+        $registeredValue = $registered.GetValue('NotepadView')
+        if ($registered.GetValue('OtherEditor') -ne 'Software\OtherEditor\Capabilities') {
+            throw 'Other application registration changed'
+        }
+    } finally { $registered.Dispose() }
+    $root.DeleteSubKeyTree('TestRegisteredApplications')
     function Read-TestTree($Key, [string]$Prefix) {
         $keys.Add($Prefix)
         foreach ($name in $Key.GetValueNames()) {
@@ -160,7 +194,7 @@ try {
     $values = [Collections.Generic.List[object]]::new()
     $keys = [Collections.Generic.List[string]]::new()
     Read-TestTree $root ''
-    @{ Changed = $changed; SecondChange = $secondChange; Values = @($values.ToArray());
+    @{ Changed = $changed; SecondChange = $secondChange; RegisteredValue = $registeredValue; Values = @($values.ToArray());
        Keys = @($keys.ToArray()) } | ConvertTo-Json -Depth 10 -Compress
 } finally {
     $root.Dispose()
@@ -203,6 +237,7 @@ def test_uninstall_removes_own_registration_but_preserves_other_values(associati
     assert APPLICATION not in result['Keys']
     assert '.md\\OpenWithProgids' not in result['Keys']
     assert CONTEXT_MENU not in result['Keys']
+    assert result['RegisteredValue'] is None
 
 
 def test_old_uninstall_preserves_new_installation(associations, tmp_path):
@@ -210,6 +245,7 @@ def test_old_uninstall_preserves_new_installation(associations, tmp_path):
     values = registered_values(associations, old) | registered_values(associations, new)
     result = uninstall_values(values, old)
     assert result['Values'] == values
+    assert result['RegisteredValue'] == CLASSES + r'\NotepadView.Capabilities'
     assert result['Changed'] is False
     assert result['SecondChange'] is False
 
@@ -220,7 +256,8 @@ def test_uninstall_checks_application_and_progid_ownership_independently(associa
     key = CLASSES + '\\' + changed_root + r'\shell\open\command'
     values[key, ''] = '"C:\\Other Install\\NotepadView.exe" "%1"'
     preserved = {item: value for item, value in values.items()
-                 if item[0] == CLASSES + '\\' + changed_root
+                 if (changed_root == PROGID and item[0].startswith(CLASSES + r'\NotepadView.Capabilities'))
+                 or item[0] == CLASSES + '\\' + changed_root
                  or item[0].startswith(CLASSES + '\\' + changed_root + '\\')
                  or (changed_root == PROGID and item[1] == PROGID)}
     result = uninstall_values(values, tmp_path)

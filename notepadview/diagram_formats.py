@@ -7,13 +7,15 @@ import json
 import math
 import re
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
 import xml.etree.ElementTree as ET
 import zipfile
 import zlib
 
 from PySide6.QtCore import QIODevice, QSaveFile
+from notepadview.diagram_appearance import (STYLE_KEYS, color, drawio_style, layout_tree,
+                                           number, topic_size, xmind_style)
 
 MAX_BYTES = 16 * 1024 * 1024
 MAX_NODES = 5000
@@ -32,6 +34,18 @@ def new_diagram(kind='flowchart'):
         'warnings': [], 'protected_paths': []}
 
 
+def web_link(value):
+    if not isinstance(value, str) or len(value) > 8192 or any(ord(c) < 32 for c in value):
+        return None
+    try:
+        parsed = urlsplit(value)
+        if parsed.scheme.lower() in ('http', 'https') and parsed.hostname and not parsed.username:
+            return value
+    except ValueError:
+        pass
+    return None
+
+
 def validate(model):
     if not isinstance(model, dict) or model.get('version') != 1 or model.get('type') != 'notepadview-diagram':
         raise ValueError('无法识别画布版本。')
@@ -47,16 +61,18 @@ def validate(model):
     for page in pages:
         if not isinstance(page, dict) or not isinstance(page.get('id'), str) or page['id'] in page_ids:
             raise ValueError('无效或重复的页面 ID。')
-        if set(page) - {'id', 'name', 'kind', 'nodes', 'edges'}:
+        if set(page) - {'id', 'name', 'kind', 'nodes', 'edges', 'background', 'summaries'}:
             raise ValueError('页面包含未支持的属性。')
         page_ids.add(page['id'])
+        if 'background' in page and (not isinstance(page['background'], str) or len(page['background']) > 200):
+            raise ValueError('无效的画布背景色。')
         if page.get('kind') not in ('mindmap', 'flowchart') or not isinstance(page.get('name'), str):
             raise ValueError('无效的页面类型或名称。')
         if not isinstance(page.get('nodes'), list) or not isinstance(page.get('edges'), list):
             raise ValueError('无效的节点或连线。')
         ids = set()
         for node in page['nodes']:
-            if not isinstance(node, dict) or set(node) - {'id', 'text', 'x', 'y', 'width', 'height', 'shape', 'parent'}:
+            if not isinstance(node, dict) or set(node) - {'id', 'text', 'x', 'y', 'width', 'height', 'shape', 'parent', 'style', 'image', 'link'}:
                 raise ValueError('节点结构无效或包含未支持的属性。')
             count += 1
             if count > MAX_NODES:
@@ -66,8 +82,18 @@ def validate(model):
             ids.add(node['id'])
             if not isinstance(node.get('text'), str) or len(node['text']) > 100000:
                 raise ValueError('节点文本无效或过长。')
-            if node.get('shape') not in ('rectangle', 'rounded', 'diamond'):
+            if node.get('shape') not in ('rectangle', 'rounded', 'diamond', 'ellipse', 'underline'):
                 raise ValueError('不支持的节点形状。')
+            _validate_style(node.get('style', {}))
+            if 'link' in node and web_link(node['link']) is None:
+                raise ValueError('无效的图表链接。')
+            image = node.get('image')
+            if image is not None:
+                if (not isinstance(image, dict) or set(image) != {'data', 'width', 'height'}
+                        or not isinstance(image['data'], str) or len(image['data']) > MAX_BYTES
+                        or any(type(image[k]) not in (int, float) or not math.isfinite(image[k])
+                               or not 1 <= image[k] <= 2000 for k in ('width', 'height'))):
+                    raise ValueError('无效的图表图片。')
             for key in ('x', 'y', 'width', 'height'):
                 v = node.get(key)
                 if type(v) not in (int, float) or not math.isfinite(v) or abs(v) > 1000000:
@@ -83,12 +109,40 @@ def validate(model):
                     raise ValueError('主题树存在循环、缺失父主题或超过 200 层。')
                 seen.add(current)
                 current = parents[current]
+        summaries = page.get('summaries', [])
+        if not isinstance(summaries, list) or len(summaries) > MAX_NODES:
+            raise ValueError('无效的概要列表。')
+        summary_ids, summary_topics = set(), set()
+        for summary in summaries:
+            if (not isinstance(summary, dict) or set(summary) != {'id', 'topic', 'topics', 'style'}
+                    or not isinstance(summary['id'], str) or summary['id'] in summary_ids
+                    or not isinstance(summary['topic'], str) or summary['topic'] not in ids
+                    or summary['topic'] in summary_topics):
+                raise ValueError('无效的概要结构。')
+            topics = summary['topics']
+            if (not isinstance(topics, list) or not topics or len(topics) > MAX_NODES
+                    or any(not isinstance(t, str) or t not in ids or t == summary['topic'] for t in topics)
+                    or len(set(topics)) != len(topics)
+                    or any(parents[t] != parents[summary['topic']] for t in topics)):
+                raise ValueError('概要范围引用无效的主题。')
+            _validate_style(summary['style'])
+            summary_ids.add(summary['id'])
+            summary_topics.add(summary['topic'])
+        if any(t in summary_topics for s in summaries for t in s['topics']):
+            raise ValueError('概要范围不能引用其他概要主题。')
         edge_ids = set(ids)
         if len(page['edges']) > MAX_NODES * 2:
             raise ValueError('连线数量过多。')
         for edge in page['edges']:
-            if not isinstance(edge, dict) or set(edge) - {'id', 'source', 'target', 'text', 'arrow', 'bend'}:
+            if not isinstance(edge, dict) or set(edge) - {'id', 'source', 'target', 'text', 'arrow', 'bend', 'points', 'style'}:
                 raise ValueError('连线结构无效或包含未支持的属性。')
+            _validate_style(edge.get('style', {}))
+            points = edge.get('points', [])
+            if (not isinstance(points, list) or len(points) > 1000
+                    or any(not isinstance(p, dict) or set(p) != {'x', 'y'}
+                           or any(type(v) not in (int, float) or not math.isfinite(v)
+                                  or abs(v) > 1000000 for v in p.values()) for p in points)):
+                raise ValueError('无效的连线路径。')
             bend = edge.get('bend')
             if bend is not None and (not isinstance(bend, dict) or set(bend) != {'x', 'y'} or any(type(v) not in (int, float) or not math.isfinite(v) or abs(v) > 1000000 for v in bend.values())):
                 raise ValueError('连线折点坐标无效。')
@@ -98,6 +152,20 @@ def validate(model):
             if edge.get('source') not in ids or edge.get('target') not in ids or not isinstance(edge.get('text', ''), str):
                 raise ValueError('连线引用了不存在的节点。')
     return model
+
+
+def _validate_style(style):
+    if not isinstance(style, dict) or set(style) - STYLE_KEYS:
+        raise ValueError('无效的图表样式。')
+    for key, value in style.items():
+        if key in ('font_size', 'stroke_width'):
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 200:
+                raise ValueError('无效的图表样式尺寸。')
+        elif key in ('bold', 'italic', 'underline', 'dashed'):
+            if type(value) is not bool:
+                raise ValueError('无效的图表样式标记。')
+        elif not isinstance(value, str) or len(value) > 200:
+            raise ValueError('无效的图表样式文本。')
 
 
 def _xml(data):
@@ -152,7 +220,9 @@ def _drawio(data):
                 except (zlib.error, UnicodeError, ValueError) as error:
                     raise ValueError('无法解压 draw.io 页面：' + str(error)) from error
         if graph.attrib:
-            _warn(model, '画布显示与布局设置无法完整保留')
+            _warn(model, '部分画布设置可能无法完整显示')
+        if (background := color(graph.get('background'))) is not None:
+            page['background'] = background
         _unknown(model, graph, ('dx', 'dy', 'grid', 'gridSize', 'guides', 'tooltips', 'connect', 'arrows', 'fold', 'page', 'pageScale', 'pageWidth', 'pageHeight', 'math', 'shadow', 'background'), ('root',), '画布')
         cells = graph.find('root')
         if cells is None:
@@ -163,7 +233,7 @@ def _drawio(data):
             if cell.tag != 'mxCell':
                 _warn(model, '包含分组、对象或特殊结构')
                 continue
-            _unknown(model, cell, ('id', 'value', 'style', 'vertex', 'edge', 'parent', 'source', 'target', 'nvParent', 'nvBendX', 'nvBendY'), ('mxGeometry',), '图元')
+            _unknown(model, cell, ('id', 'value', 'link', 'style', 'vertex', 'edge', 'parent', 'source', 'target', 'nvParent', 'nvBendX', 'nvBendY'), ('mxGeometry',), '图元')
             if cell.get('id') in ('0', '1') and not cell.get('vertex') and not cell.get('edge'):
                 if cell.get('value') or cell.get('style'):
                     _warn(model, '图层属性未支持')
@@ -174,11 +244,15 @@ def _drawio(data):
                     key, _, value = token.partition('=')
                     style[key] = value
             allowed = {'rounded': ('0', '1'), 'whiteSpace': ('wrap',), 'html': ('0', '1'),
-                       'rhombus': ('',), 'shape': ('rhombus', 'rectangle'),
-                       'edgeStyle': ('none',), 'endArrow': ('classic', 'none'),
+                       'rhombus': ('',), 'ellipse': ('',), 'shape': ('rhombus', 'rectangle', 'ellipse'),
+                       'edgeStyle': ('none', 'orthogonalEdgeStyle', 'elbowEdgeStyle'), 'endArrow': ('classic', 'none'),
                        'endFill': ('1',), 'orthogonalLoop': ('1',), 'jettySize': ('auto',)}
-            if any(key not in allowed or value not in allowed[key] for key, value in style.items()):
-                _warn(model, '存在复杂样式（颜色、字体、锚点或特殊图形等），首版仅显示基础样式')
+            appearance_keys = {'fillColor', 'strokeColor', 'fontColor', 'fontSize', 'fontFamily',
+                               'fontStyle', 'strokeWidth', 'align', 'dashed', 'curved'}
+            if any(key not in appearance_keys and (key not in allowed or value not in allowed[key])
+                   for key, value in style.items()):
+                _warn(model, '部分复杂样式、锚点或特殊图形可能无法完整显示')
+            appearance = drawio_style(style)
             text = cell.get('value', '')
             if style.get('html') == '1':
                 text = re.sub(r'<br\s*/?>|</(?:div|p)>', '\n', text, flags=re.I)
@@ -194,26 +268,39 @@ def _drawio(data):
                 _unknown(model, geo, ('x', 'y', 'width', 'height', 'as'), (), '节点几何')
                 node = {'id': cell.get('id'), 'text': text, 'parent': cell.get('nvParent'),
                         'shape': 'diamond' if 'rhombus' in style or style.get('shape') == 'rhombus' else
-                                 'rounded' if style.get('rounded') == '1' else 'rectangle'}
+                                 'ellipse' if 'ellipse' in style or style.get('shape') == 'ellipse' else
+                                 'rounded' if style.get('rounded') == '1' else 'rectangle',
+                        **({'style': appearance} if appearance else {})}
                 for key, default in (('x', 0), ('y', 0), ('width', 150), ('height', 64)):
                     node[key] = float(geo.get(key, default))
+                if (link := web_link(cell.get('link'))) is not None:
+                    node['link'] = link
+                elif cell.get('link'):
+                    _warn(model, '非网页链接不自动打开')
                 page['nodes'].append(node)
             elif cell.get('edge') == '1':
+                route_points = []
                 if geo is not None:
                     _unknown(model, geo, ('relative', 'as'), ('Array',), '连线几何')
                     arrays = list(geo)
                     points = geo.findall('./Array/mxPoint')
                     if arrays:
-                        if len(arrays) == 1 and arrays[0].attrib == {'as': 'points'} and len(points) == 1 and len(list(arrays[0])) == 1 and set(points[0].attrib) <= {'x', 'y'} and not list(points[0]):
-                            cell.set('nvBendX', points[0].get('x', '0'))
-                            cell.set('nvBendY', points[0].get('y', '0'))
+                        if (len(arrays) == 1 and arrays[0].attrib == {'as': 'points'}
+                                and len(points) == len(list(arrays[0]))
+                                and all(set(p.attrib) <= {'x', 'y'} and not list(p) for p in points)):
+                            route_points = [{'x': float(p.get('x', 0)), 'y': float(p.get('y', 0))} for p in points]
+                            if len(points) == 1:
+                                cell.set('nvBendX', points[0].get('x', '0'))
+                                cell.set('nvBendY', points[0].get('y', '0'))
                         else:
-                            _warn(model, '复杂连线控制点未支持')
+                            _warn(model, '部分特殊连线控制点未支持')
                 if cell.get('parent', '1') != '1':
                     _warn(model, '嵌套连线未支持')
                 page['edges'].append({'id': cell.get('id'), 'source': cell.get('source'),
                                       'target': cell.get('target'), 'text': text,
                                       'arrow': style.get('endArrow') != 'none',
+                                      **({'style': appearance} if appearance else {}),
+                                      **({'points': route_points} if len(route_points) > 1 else {}),
                                       **({'bend': {'x': float(cell.get('nvBendX')), 'y': float(cell.get('nvBendY'))}} if cell.get('nvBendX') is not None else {})})
             else:
                 _warn(model, '额外图层或未识别图元未支持')
@@ -229,6 +316,7 @@ def _drawio(data):
 def _xmind(data):
     model = new_diagram('mindmap')
     model['pages'] = []
+    images = {}
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             infos = archive.infolist()
@@ -242,6 +330,9 @@ def _xmind(data):
             if archive.getinfo('content.json').file_size > MAX_BYTES:
                 raise ValueError('XMind content.json 超过 16 MiB。')
             sheets = json.loads(archive.read('content.json'))
+            for info in infos:
+                if info.filename.startswith('resources/') and info.filename.lower().endswith(('.png', '.jpg', '.jpeg')) and info.file_size <= 4 * 1024 * 1024:
+                    images['xap:' + info.filename] = base64.b64encode(archive.read(info)).decode('ascii')
             if any(name not in ('content.json', 'metadata.json', 'manifest.json', 'Thumbnails/thumbnail.png') and not name.endswith('/') for name in names):
                 _warn(model, 'XMind 包含附件或其他附加文件')
             if 'metadata.json' in names:
@@ -252,28 +343,109 @@ def _xmind(data):
         raise ValueError('无法读取 XMind ZIP：' + str(error)) from error
     if not isinstance(sheets, list):
         raise ValueError('无效的 XMind 主题内容。')
-    def topic(node, page, parent=None, depth=0):
+    def topic(node, page, theme, parent=None, depth=0, branch_color=None, is_summary=False):
         if depth > 200 or len(page['nodes']) >= MAX_NODES or not isinstance(node, dict):
             raise ValueError('主题层数或数量超过限制。')
-        if set(node) - {'id', 'title', 'children', 'class', 'nvPosition', 'structureClass'}:
-            _warn(model, '主题包含备注、标签、链接、标记或复杂样式等未支持信息')
-        if node.get('structureClass') is not None:
-            _warn(model, '特殊主题布局将转换为普通主题树')
+        if set(node) - {'id', 'title', 'children', 'class', 'nvPosition', 'structureClass',
+                        'style', 'image', 'href', 'customWidth', 'summaries'}:
+            _warn(model, '主题包含备注、标签、标记或其他未支持信息')
+        node_properties = node.get('style', {}).get('properties', {})
+        if set(node_properties) - {'svg:fill', 'border-line-color', 'fo:color', 'fo:font-family',
+                'fo:font-size', 'border-line-width', 'fo:font-weight', 'fo:font-style',
+                'fo:text-decoration', 'fo:text-align', 'shape-class', 'line-color', 'line-class'}:
+            _warn(model, '主题包含未支持的复杂样式')
+        structure = node.get('structureClass', '')
+        if structure and structure not in ('org.xmind.ui.logic.right', 'org.xmind.ui.logic.left',
+                'org.xmind.ui.map.unbalanced', 'org.xmind.ui.map.clockwise', 'org.xmind.ui.map',
+                'org.xmind.ui.org-chart.down', 'org.xmind.ui.tree.down', 'org.xmind.ui.tree.right', 'org.xmind.ui.tree.left'):
+            _warn(model, '部分特殊主题布局采用近似显示')
+        properties = dict(theme.get('centralTopic' if depth == 0 else 'mainTopic' if depth == 1 else 'subTopic', {}).get('properties', {}))
+        if branch_color and depth > 0:
+            properties.setdefault('svg:fill', branch_color)
+            properties.setdefault('line-color', branch_color)
+        properties.update(node.get('style', {}).get('properties', {}))
+        appearance = xmind_style(properties)
+        appearance.update(fill='#4bc48a' if depth == 0 else branch_color or '#ffcc45',
+                          text_color='#ffffff' if depth == 0 else '#252525',
+                          font_size=16 if depth == 0 else 14, font_family='Microsoft YaHei',
+                          stroke_width=0, bold=False, italic=False, underline=False, align='left')
+        explicit = xmind_style(node.get('style', {}).get('properties', {}))
+        appearance.update(explicit)
+        if is_summary:
+            appearance['fill'] = explicit.get('fill', '#ed6a55')
+            appearance['text_color'] = explicit.get('text_color', '#ffffff')
+        shape_name = properties.get('shape-class', '').rsplit('.', 1)[-1]
+        shape = {'roundedRect': 'rounded', 'rect': 'rectangle', 'ellipse': 'ellipse',
+                 'diamond': 'diamond', 'underline': 'underline', 'noBorder': 'rectangle'}.get(shape_name, 'rounded')
+        if shape_name == 'noBorder':
+            appearance['stroke_width'] = 0
+            appearance.setdefault('fill', 'transparent')
+        shape = 'rounded'
+        image_info = node.get('image', {})
+        image = None
+        if isinstance(image_info, dict) and image_info.get('src') in images:
+            image = {'data': images[image_info['src']], 'width': number(image_info.get('width'), 200, 1, 2000),
+                     'height': number(image_info.get('height'), 120, 1, 2000)}
+        link = web_link(node.get('href'))
+        if node.get('href') and not link:
+            _warn(model, '非网页链接仅作原文件信息保留，不自动打开')
+        width, height = topic_size(node.get('title', ''), appearance, node.get('customWidth'), image)
+        if link:
+            width = max(width, 100)
+            height += 24
         position = node.get('nvPosition', {})
+        if position and not theme and not node.get('style'):
+            appearance = {}
         item = {'id': node.get('id') or identifier(), 'text': node.get('title', ''),
                 'x': position.get('x', depth * 230), 'y': position.get('y', len(page['nodes']) * 100),
-                'width': position.get('width', 150), 'height': position.get('height', 64),
-                'shape': position.get('shape', 'rounded'), 'parent': parent}
+                'width': position.get('width', width), 'height': position.get('height', height),
+                'shape': position.get('shape', shape), 'parent': parent,
+                **({'style': appearance} if appearance else {}), **({'image': image} if image else {}),
+                **({'link': link} if link else {})}
         page['nodes'].append(item)
-        if parent:
-            page['edges'].append({'id': identifier(), 'source': parent, 'target': item['id'], 'text': '', 'arrow': True})
+        if parent and not is_summary:
+            page['edges'].append({'id': identifier(), 'source': parent, 'target': item['id'], 'text': '', 'arrow': False,
+                                  'style': {'stroke': branch_color or '#ffcc45',
+                                            'stroke_width': 1,
+                                            'route': 'orthogonal' if 'Elbow' in properties.get('line-class', '') else 'curve'}})
         children = node.get('children', {})
         if not isinstance(children, dict):
             raise ValueError('无效的 XMind 子主题。')
-        if set(children) - {'attached'}:
-            _warn(model, '包含自由主题、概要或特殊子主题结构')
-        for child in children.get('attached', []):
-            topic(child, page, item['id'], depth + 1)
+        if set(children) - {'attached', 'summary'}:
+            _warn(model, '包含自由主题或特殊子主题结构')
+        palette = ['#ffcc45', '#ed6a55', '#55b9d5']
+        attached_ids = []
+        for index, child in enumerate(children.get('attached', [])):
+            child_color = palette[index % len(palette)] if depth == 0 and palette else branch_color
+            attached_ids.append(topic(child, page, theme, item['id'], depth + 1, child_color))
+        summary_nodes = {}
+        for child in children.get('summary', []):
+            summary_nodes[child.get('id')] = topic(child, page, theme, item['id'], depth + 1, branch_color, True)
+        attached = children.get('attached', [])
+        used = set()
+        summaries = node.get('summaries', [])
+        if not isinstance(summaries, list) or len(summaries) > MAX_NODES:
+            raise ValueError('无效的 XMind 概要列表。')
+        for summary in summaries:
+            if not isinstance(summary, dict):
+                raise ValueError('无效的 XMind 概要。')
+            target = summary.get('topicId')
+            match = re.fullmatch(r'\(\s*(\d+)\s*,\s*(\d+)\s*\)', str(summary.get('range', '')))
+            if target not in summary_nodes or target in used or not match:
+                _warn(model, '部分概要范围无效，概要文字单独显示')
+                continue
+            first, last = map(int, match.groups())
+            if not 0 <= first <= last < len(attached):
+                _warn(model, '部分概要范围无效，概要文字单独显示')
+                continue
+            used.add(target)
+            page.setdefault('summaries', []).append({
+                'id': summary.get('id') or identifier(), 'topic': summary_nodes[target],
+                'topics': attached_ids[first:last + 1],
+                'style': {'stroke': '#10113f', 'stroke_width': 2}})
+        if set(summary_nodes) - used:
+            _warn(model, '部分概要缺少有效范围，概要文字单独显示')
+        return item['id']
     for sheet in sheets:
         if not isinstance(sheet, dict):
             raise ValueError('无效的 XMind 页面。')
@@ -281,7 +453,14 @@ def _xmind(data):
             _warn(model, '页面包含关系、边界、概要、样式或其他特殊结构')
         page = {'id': sheet.get('id') or identifier(), 'name': sheet.get('title', '主题'),
                 'kind': 'mindmap', 'nodes': [], 'edges': []}
-        topic(sheet.get('rootTopic'), page)
+        topic(sheet.get('rootTopic'), page, sheet.get('theme', {}))
+        background = sheet.get('style', {}).get('properties', {}).get('svg:fill') or sheet.get('theme', {}).get('map', {}).get('properties', {}).get('svg:fill')
+        if (background := color(background)) is not None:
+            page['background'] = background
+        def has_positions(node):
+            return 'nvPosition' in node and all(has_positions(c) for c in node.get('children', {}).get('attached', []))
+        if not has_positions(sheet['rootTopic']):
+            layout_tree(page, sheet['rootTopic'].get('structureClass'))
         model['pages'].append(page)
     return model
 
@@ -303,7 +482,7 @@ def read_diagram(path):
         else:
             raise ValueError('请选择 .nvdiagram、.drawio 或 .xmind 文件。')
         validate(model)
-    except (TypeError, KeyError, RecursionError, UnicodeError) as error:
+    except (TypeError, KeyError, AttributeError, RecursionError, UnicodeError) as error:
         raise ValueError('图形文件结构无效：' + str(error)) from error
     if model.get('warnings') and path.suffix.lower() != '.nvdiagram':
         paths = model.setdefault('protected_paths', [])
@@ -374,6 +553,11 @@ def write_diagram(path, model):
     if any(path == Path(original).resolve() for original in model.get('protected_paths', [])):
         raise ValueError('原文件包含无法无损写回的信息，已保护原文件。请另存自有格式或新文件。')
     suffix = path.suffix.lower()
+    if suffix in ('.drawio', '.xmind') and any(
+            'background' in page or page.get('summaries')
+            or any('style' in n or 'image' in n or 'link' in n or n['shape'] in ('ellipse', 'underline') for n in page['nodes'])
+            or any('style' in e or 'points' in e for e in page['edges']) for page in model['pages']):
+        raise ValueError('外部格式写出暂不支持保留这些样式、图片或路径；请使用自有格式。')
     if suffix == '.nvdiagram':
         data = json.dumps(model, ensure_ascii=False, allow_nan=False, indent=2).encode('utf-8')
     elif suffix == '.drawio':

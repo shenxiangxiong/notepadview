@@ -66,7 +66,17 @@ class WorkspaceController:
                                           reader_state=data.get('reader_state', {}))
                 session.refresh_text_format(data['text'])
                 if session.kind == 'diagram':
-                    window._attach_diagram(session, data['diagram_model'], data['modified'])
+                    from notepadview.diagram_formats import read_diagram
+                    model = data['diagram_model']
+                    if session.path is not None:
+                        try:
+                            model = read_diagram(session.path)
+                        except (OSError, ValueError):
+                            model = deepcopy(model)
+                            warning = '原图表暂时无法读取，显示上次缓存。'
+                            if warning not in model.setdefault('warnings', []):
+                                model['warnings'].append(warning)
+                    window._attach_diagram(session, model, data['modified'])
                 if session.kind in ('docx', 'xlsx'):
                     from notepadview.office_editor import OfficeEditor
                     editor = (OfficeEditor.from_snapshot(data['office_edit'], window)

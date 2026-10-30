@@ -8,13 +8,20 @@ from test_ui import app, window  # noqa: F401
 from notepadview.diagrams import DiagramEditor, new_diagram, read_diagram, write_diagram
 
 
-def test_drawio_preserves_own_tree_and_edge_bend(app, tmp_path):
-    editor = DiagramEditor(new_diagram('mindmap'))
-    root = editor.page['nodes'][0]['id']
-    editor.add_node(root)
-    editor.page['edges'][0]['bend'] = {'x': 320, 'y': 220}
+def tree_model():
+    model = new_diagram('mindmap')
+    page = model['pages'][0]
+    root = page['nodes'][0]
+    page['nodes'].append({**deepcopy(root), 'id': 'child', 'parent': root['id'], 'x': 250})
+    page['edges'].append({'id': 'edge', 'source': root['id'], 'target': 'child', 'text': '', 'arrow': True})
+    return model
+
+
+def test_drawio_preserves_own_tree_and_edge_bend(tmp_path):
+    model = tree_model()
+    model['pages'][0]['edges'][0]['bend'] = {'x': 320, 'y': 220}
     path = tmp_path / 'tree.drawio'
-    write_diagram(path, editor.model)
+    write_diagram(path, model)
     result = read_diagram(path)
     assert result['pages'][0]['kind'] == 'mindmap'
     assert result['pages'][0]['nodes'][1]['parent'] == result['pages'][0]['nodes'][0]['id']
@@ -46,12 +53,18 @@ def test_renamed_complex_original_remains_protected(window, tmp_path, monkeypatc
     assert not window.save_to(session.path)
     assert session.path.read_bytes() == original
     target = tmp_path / 'converted.nvdiagram'
-    assert window.save_to(target)
-    assert window.save_document()
+    assert not window.save_to(target)
+    assert not window.save_document()
+    assert not target.exists()
+    assert session.path.read_bytes() == original
 
 
-def test_real_mouse_drag_and_delete(app):
-    editor = DiagramEditor(new_diagram())
+def test_real_mouse_interactions_are_readonly(app, monkeypatch):
+    from PySide6.QtWidgets import QGraphicsItem, QInputDialog
+    monkeypatch.setattr(QInputDialog, 'getMultiLineText', lambda *a, **k: pytest.fail('不应编辑图表'))
+    monkeypatch.setattr(QInputDialog, 'getText', lambda *a, **k: pytest.fail('不应编辑图表'))
+    editor = DiagramEditor(tree_model())
+    original = deepcopy(editor.model)
     editor.resize(1100, 700)
     editor.show()
     editor.fit()
@@ -61,13 +74,13 @@ def test_real_mouse_drag_and_delete(app):
     QTest.mousePress(editor.view.viewport(), Qt.LeftButton, pos=start)
     QTest.mouseMove(editor.view.viewport(), start + QPoint(70, 40), delay=30)
     QTest.mouseRelease(editor.view.viewport(), Qt.LeftButton, pos=start + QPoint(70, 40))
-    assert editor.node(node['id'])['x'] != 0
-    assert editor.undo_stack.canUndo()
+    QTest.mouseDClick(editor.view.viewport(), Qt.LeftButton, pos=start)
     editor.items_by_id[node['id']].setSelected(True)
     QTest.keyClick(editor.view, Qt.Key_Delete)
-    assert not editor.page['nodes']
-    editor.undo_stack.undo()
-    assert len(editor.page['nodes']) == 1
+    QTest.keyClick(editor.view, Qt.Key_Backspace)
+    for item in [*editor.items_by_id.values(), *editor.edge_items]:
+        assert not item.flags() & QGraphicsItem.ItemIsMovable
+    assert editor.model == original
     editor.close()
 
 
@@ -101,20 +114,20 @@ def test_drawio_unretained_presentation_requires_protection(tmp_path):
         write_diagram(path, result)
 
 
-def test_drawio_bend_uses_standard_geometry(app, tmp_path):
-    editor = DiagramEditor(new_diagram('mindmap'))
-    editor.add_node(editor.page['nodes'][0]['id'])
-    editor.page['edges'][0]['bend'] = {'x': 300, 'y': 200}
+def test_drawio_bend_uses_standard_geometry(tmp_path):
+    model = tree_model()
+    model['pages'][0]['edges'][0]['bend'] = {'x': 300, 'y': 200}
     path = tmp_path / 'bend.drawio'
-    write_diagram(path, editor.model)
+    write_diagram(path, model)
     from xml.etree import ElementTree as ET
     point = ET.fromstring(path.read_bytes()).find('.//mxGeometry/Array/mxPoint')
     assert point is not None and float(point.get('x')) == 300
 
 
-def test_closed_diagram_released_from_stack(window):
-    window.new_diagram()
+def test_closed_diagram_released_from_stack(window, tmp_path):
+    path = tmp_path / 'view.nvdiagram'
+    write_diagram(path, new_diagram())
+    assert window.open_document_path(path)
     canvas = window.current_session.diagram
-    window.current_session.document.setModified(False)
     assert window.close_document_tab(window.document_tabs.currentIndex())
     assert window.document_area.indexOf(canvas) == -1
