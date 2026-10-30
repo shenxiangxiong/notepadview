@@ -8,7 +8,7 @@ from threading import Event, Thread
 
 from PySide6.QtCore import Signal, QTimer, Qt
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QDialog, QMessageBox, QWidget
+from PySide6.QtWidgets import QColorDialog, QDialog, QMessageBox, QWidget
 
 from notepadview.theme import ThemedMenu as QMenu
 from pyside6_scintilla import Scintilla, ScintillaDocument, ScintillaEdit
@@ -172,7 +172,38 @@ class SourceEditor(ScintillaEdit):
             action = menu.addAction(label)
             action.setEnabled(ordinary and self.length() > 0 and (writable or operation == 'check'))
             action.triggered.connect(lambda _=False, op=operation: self.apply_format_operation(op))
+        if self.language == 'md':
+            for label, callback in (
+                ('字体颜色…', self.apply_markdown_color),
+                ('删除线', lambda: self.apply_markdown_inline('~~', '~~', '删除线文字')),
+            ):
+                action = menu.addAction(label)
+                action.setEnabled(writable and ordinary)
+                action.triggered.connect(callback)
         return menu
+
+    def apply_markdown_inline(self, prefix, suffix, default):
+        if (self.language != 'md' or self.readOnly() or self.selectionIsRectangle()
+                or self.selections() != 1):
+            return False
+        text = self.selected_text() or default
+        self.beginUndoAction()
+        try:
+            self.replace_selection(prefix + text + suffix)
+        finally:
+            self.endUndoAction()
+        self.setFocus()
+        return True
+
+    def apply_markdown_color(self):
+        if (self.language != 'md' or self.readOnly() or self.selectionIsRectangle()
+                or self.selections() != 1):
+            return False
+        color = QColorDialog.getColor(parent=self, title='选择字体颜色')
+        if not color.isValid():
+            return False
+        return self.apply_markdown_inline(
+            f'<span style="color:{color.name()}">', '</span>', '文字')
 
     def format_operations(self):
         if self.language == 'md':

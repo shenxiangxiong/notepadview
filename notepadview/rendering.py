@@ -1,4 +1,5 @@
 from html import escape
+import re
 from markdown_it import MarkdownIt
 from mdit_py_plugins.tasklists import tasklists_plugin
 from pygments import highlight
@@ -149,8 +150,34 @@ def large_text_preview(source):
     return '<div class="large-preview">' + ''.join(chunks) + '</div>'
 
 
+def _markdown_color(state, silent):
+    tail = state.src[state.pos:]
+    if tail.startswith('</span>') and getattr(state, '_color_depth', 0):
+        if not silent:
+            state.push('html_inline', '', 0).content = '</span>'
+            state._color_depth -= 1
+        state.pos += len('</span>')
+        return True
+    match = re.match(r'<span style="color:(#[0-9a-fA-F]{6})">', tail)
+    if not match:
+        return False
+    depth = 1
+    for tag in re.finditer(r'<span\b[^>]*>|</span>', tail[match.end():]):
+        depth += -1 if tag[0] == '</span>' else 1
+        if depth == 0:
+            break
+    if depth:
+        return False
+    if not silent:
+        state.push('html_inline', '', 0).content = match[0]
+        state._color_depth = getattr(state, '_color_depth', 0) + 1
+    state.pos += match.end()
+    return True
+
+
 def parse_markdown(source, highlight_code=None):
     parser = MarkdownIt('commonmark', {'html': False, 'highlight': highlight_code})
+    parser.inline.ruler.before('html_inline', 'font_color', _markdown_color)
     parser.enable('table').enable('strikethrough').use(tasklists_plugin)
     tokens = parser.parse(source)
     for token in tokens:
