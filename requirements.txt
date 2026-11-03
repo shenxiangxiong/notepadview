@@ -11,5 +11,4 @@ httpx==0.28.1
 PyYAML==6.0.3
 cryptography==46.0.3
 keyring==25.6.0
-# AGPL-3.0 或商业许可；分发前须评估适用许可，见 README。
-PyMuPDF==1.26.7
+# 默认构建仅使用 Qt PDF 查看，不安装历史 PDF 编辑后端 PyMuPDF。

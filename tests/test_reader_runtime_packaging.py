@@ -92,13 +92,16 @@ def test_runtime_staging_rejects_incomplete_payload(tmp_path):
         )
 
 
-def test_windows_setup_payload_contains_staged_reader_runtimes(tmp_path, monkeypatch):
+@pytest.mark.parametrize('output_directory', ['dist', 'dist-free'])
+def test_windows_setup_payload_contains_staged_reader_runtimes(tmp_path, monkeypatch, output_directory):
+    monkeypatch.setattr(build, 'DIST_DIRECTORY', output_directory)
     libreoffice, calibre = make_payloads(tmp_path, 'Windows')
     root = tmp_path / 'project'
-    distribution = root / 'dist' / 'NotepadView'
+    distribution = root / output_directory / 'NotepadView'
     distribution.mkdir(parents=True)
     (root / 'packaging_tools').mkdir()
     (root / 'packaging_tools' / 'uninstall.ps1').write_text('uninstall', encoding='utf-8')
+    (root / 'LICENSE').write_text('application license', encoding='utf-8')
     (root / 'README.md').write_text('readme', encoding='utf-8')
     (root / 'THIRD_PARTY_NOTICES.md').write_text('notices', encoding='utf-8')
     (root / 'notepadview' / 'assets').mkdir(parents=True)
@@ -116,15 +119,18 @@ def test_windows_setup_payload_contains_staged_reader_runtimes(tmp_path, monkeyp
 
     def fake_run(*args):
         if args[:2] == ('-m', 'PyInstaller') and '--onefile' in args:
-            (root / 'dist' / 'NotepadView-1.0.0-Setup.exe').write_bytes(b'setup')
+            assert '--noupx' in args
+            assert args[args.index('--distpath') + 1] == str(root / output_directory)
+            (root / output_directory / 'NotepadView-1.0.0-Setup.exe').write_bytes(b'setup')
 
     monkeypatch.setattr(build, 'run', fake_run)
 
     build.assemble_setup()
 
-    archive_path = root / 'dist' / 'NotepadView-1.0.0-Windows-x64-portable.zip'
+    archive_path = root / output_directory / 'NotepadView-1.0.0-Windows-x64-portable.zip'
     with zipfile.ZipFile(archive_path) as archive:
         names = archive.namelist()
+        assert archive.read('LICENSE') == b'application license'
     assert any(name.endswith('reader-runtimes/libreoffice/program/soffice.exe')
                for name in names)
     assert any(name.endswith('reader-runtimes/calibre/ebook-convert.exe')

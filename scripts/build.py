@@ -8,6 +8,7 @@ import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+DIST_DIRECTORY = os.environ.get('NOTEPADVIEW_DIST_DIR', 'dist')
 sys.path.insert(0, str(ROOT))
 
 from packaging_tools.reader_runtime import prepare_windows_runtimes, stage_reader_runtimes
@@ -26,7 +27,10 @@ def run(*args):
 def build():
     runtime_env = prepare_windows_runtimes(ROOT)
     run('scripts/create_assets.py')
-    run('-m', 'PyInstaller', '--noconfirm', '--clean', '--windowed', '--name', 'NotepadView',
+    run('-m', 'PyInstaller', '--noconfirm', '--clean', '--noupx', '--windowed', '--name', 'NotepadView',
+        '--distpath', str(ROOT / DIST_DIRECTORY),
+        '--exclude-module', 'pymupdf', '--exclude-module', 'fitz',
+        '--exclude-module', 'notepadview.pdf_editor', '--exclude-module', 'notepadview.pdf_model',
         '--icon', 'notepadview/assets/app.ico', '--add-data', 'notepadview/assets;notepadview/assets',
         '--collect-all', 'pyside6_scintilla', '--collect-submodules', 'sqlparse',
         '--collect-submodules', 'pygments.lexers', '--collect-data', 'pygments',
@@ -38,7 +42,7 @@ def build():
 
 def assemble_setup(*, runtime_env=None):
     runtime_env = prepare_windows_runtimes(ROOT) if runtime_env is None else runtime_env
-    distribution = ROOT / 'dist' / 'NotepadView'
+    distribution = ROOT / DIST_DIRECTORY / 'NotepadView'
     stage_reader_runtimes(distribution, env=runtime_env, system='Windows')
     licenses = distribution / '_internal/licenses'
     licenses.mkdir(parents=True, exist_ok=True)
@@ -46,7 +50,7 @@ def assemble_setup(*, runtime_env=None):
                  'shiboken6', 'markdown-it-py', 'mdurl', 'mdit-py-plugins', 'Pygments', 'regex',
                  'httpx', 'httpcore', 'h11', 'certifi', 'idna', 'PyYAML', 'cryptography',
                  'cffi', 'keyring', 'pywin32-ctypes', 'jaraco.classes', 'PyInstaller',
-                 'python-docx', 'openpyxl', 'lxml', 'et_xmlfile', 'typing_extensions', 'PyMuPDF']:
+                 'python-docx', 'openpyxl', 'lxml', 'et_xmlfile', 'typing_extensions']:
         component = importlib.metadata.distribution(name)
         for entry in component.files or []:
             if any(token in str(entry).lower() for token in ['license', 'copying', 'notice']) or entry.name == 'METADATA':
@@ -62,11 +66,12 @@ def assemble_setup(*, runtime_env=None):
     (ROOT / 'dependencies-lock.txt').write_text(lock, encoding='utf-8')
     shutil.copy2(ROOT / 'dependencies-lock.txt', distribution / 'dependencies-lock.txt')
     shutil.copy2(ROOT / 'packaging_tools/uninstall.ps1', distribution / 'uninstall.ps1')
+    shutil.copy2(ROOT / 'LICENSE', distribution / 'LICENSE')
     shutil.copy2(ROOT / 'README.md', distribution / 'README.md')
     shutil.copy2(ROOT / 'THIRD_PARTY_NOTICES.md', distribution / 'THIRD_PARTY_NOTICES.md')
     payload = ROOT / 'build/payload.tar.xz'
     payload.parent.mkdir(parents=True, exist_ok=True)
-    portable = ROOT / 'dist/NotepadView-1.0.0-Windows-x64-portable.zip'
+    portable = ROOT / DIST_DIRECTORY / 'NotepadView-1.0.0-Windows-x64-portable.zip'
     from packaging_tools.payload import write_payload
     write_payload(distribution, payload)
     # 便携版保留 Windows 资源管理器兼容的 Deflate。
@@ -75,18 +80,19 @@ def assemble_setup(*, runtime_env=None):
             if path.is_file():
                 relative = path.relative_to(distribution).as_posix()
                 portable_archive.write(path, relative)
-    run('-m', 'PyInstaller', '--noconfirm', '--clean', '--onefile', '--windowed',
+    run('-m', 'PyInstaller', '--noconfirm', '--clean', '--noupx', '--onefile', '--windowed',
+        '--distpath', str(ROOT / DIST_DIRECTORY),
         '--name', 'NotepadView-1.0.0-Setup', '--icon', 'notepadview/assets/app.ico',
         '--add-data', 'build/payload.tar.xz;.', '--add-data', 'notepadview/assets;notepadview/assets',
         'packaging_tools/setup.py')
     artifacts = ['NotepadView-1.0.0-Setup.exe', 'NotepadView-1.0.0-Windows-x64-portable.zip']
     checksums = []
     for name in artifacts:
-        with (ROOT / 'dist' / name).open('rb') as stream:
+        with (ROOT / DIST_DIRECTORY / name).open('rb') as stream:
             digest = hashlib.file_digest(stream, 'sha256').hexdigest()
         checksums.append(f'{digest}  {name}')
-    (ROOT / 'dist/SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='ascii')
-    print('Built installer: dist/NotepadView-1.0.0-Setup.exe', flush=True)
+    (ROOT / DIST_DIRECTORY / 'SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='ascii')
+    print(f'Built installer: {ROOT / DIST_DIRECTORY / artifacts[0]}', flush=True)
 
 
 if __name__ == '__main__':

@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+dist-free/
 tools/
 *.spec
 test-*/
@@ -34,3 +35,4 @@ Windows打包.exe
 *.pfx
 /.idea/
 /docs
+/.vscode

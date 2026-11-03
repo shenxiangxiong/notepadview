@@ -11,7 +11,7 @@ Notepad View uses the following components. Copyrights remain with their respect
 - python-docx and openpyxl (Word/Excel support in source builds): MIT license.
 - lxml: BSD-3-Clause license; includes libxml2/libxslt with their upstream licenses.
 - et_xmlfile: MIT license; typing_extensions: Python Software Foundation License.
-- PyMuPDF 1.26.7 / MuPDF (PDF editing in source builds): dual AGPL-3.0 or commercial licensing, provided by Artifex. See https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright and https://artifex.com/licensing/. No compatibility with this application's distribution terms is asserted. Evaluate AGPL obligations or obtain an appropriate commercial license before redistribution. Existing installers were not rebuilt to include this dependency.
+- PyMuPDF / MuPDF: excluded from default dependencies and Windows builds, together with the legacy PDF editing modules. PDF viewing uses Qt PDF. Running legacy PDF editing source or tests requires a separate PyMuPDF installation and compliance with its AGPL-3.0 or commercial license; see https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright. This default build does not require a commercial PyMuPDF license.
 - regex: Apache-2.0 and CNRI-Python licenses, as recorded in the bundled component metadata.
 - HTTPX and httpcore: BSD-3-Clause; h11: MIT; certifi: Mozilla Public License 2.0; idna: BSD-3-Clause.
 - PyYAML: MIT license.

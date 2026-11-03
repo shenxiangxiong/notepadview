@@ -238,6 +238,8 @@ requirements*.txt 运行与开发依赖
 
 第三方依赖及其再分发说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。分发时需保留相应许可证、声明，并核查所用运行时版本的许可要求。
 
-历史 PDF 编辑模块仍依赖 PyMuPDF（MuPDF），采用 **AGPL-3.0 或商业许可**；当前 PDF 查看使用 Qt PDF，不代表该依赖的许可义务自动消失。使用或分发前应评估适用要求，必要时取得商业许可。参见 [PyMuPDF 许可说明](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright)。
+默认依赖和 Windows 构建不包含 PyMuPDF（MuPDF）及历史 PDF 编辑模块，PDF 继续使用 Qt PDF 只读查看。构建工具和所用组件均可按各自开源许可免费使用，无需购买 Qt 或 PyMuPDF 商业许可；仍须遵守随包 LGPL、GPL、MPL 等许可证的分发和对应源码要求。历史 PDF 编辑源码及其测试如需单独运行，可自行安装 PyMuPDF 1.26.7，并履行其 **AGPL-3.0 或商业许可**要求；默认构建即使在已安装 PyMuPDF 的环境中也会明确排除它。参见 [PyMuPDF 许可说明](https://pymupdf.readthedocs.io/en/latest/about.html#license-and-copyright)。
+
+Windows 构建关闭 UPX，不使用收费打包工具或付费代码签名服务。未签名程序仍可能触发 SmartScreen 或杀毒软件检测，关闭 UPX 不保证消除误报。
 
 当前本地 Windows 构建未配置代码签名证书。下载后可核对发布的 SHA256 校验值；正式发布前应确认对应版本的测试结果及依赖许可。
